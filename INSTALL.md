@@ -30,24 +30,30 @@ Script bunları otomatik yapıyor:
 - 🔥 **UFW firewall** — sadece SSH portu + 80 + 443 açık
 - 🩹 **Autoheal** — unhealthy container'ları otomatik restart eder
 - 🎁 **Final summary** — secret'ları son ekrana basar (tek seferlik)
+- ⏱ **Spinner + süre** — uzun çalışan apt/docker adımlarında canlı progress (`⠋ Docker indirme + kurulum (1-3 dk)... ✓ (47s)`)
 
 ## Çalıştırma modları
 
 ```bash
-# Mod 1 — repo'yu klonladıktan sonra (önerilen, en güvenli)
-git clone https://github.com/USER/cmr.git /opt/cmr
-cd /opt/cmr
-sudo bash install.sh
+# Mod 1 — tek satır (curl|bash) — en hızlı
+sudo bash -c 'curl -fsSL https://raw.githubusercontent.com/very6778/cmr/main/install.sh \
+  | REPO_URL=https://github.com/very6778/cmr.git bash'
 
-# Mod 2 — tek satır (curl|bash)
-curl -fsSL https://raw.githubusercontent.com/USER/cmr/main/install.sh \
-  | sudo REPO_URL=https://github.com/USER/cmr.git bash
+# Mod 2 — repo'yu klonladıktan sonra
+git clone https://github.com/very6778/cmr.git /opt/cmr
+cd /opt/cmr && sudo bash install.sh
 
 # Otomatik mod (CI/CD için, hiç soru sormaz)
-sudo LANG_SEL=tr DOMAIN=cmr.example.com EMAIL=admin@example.com bash install.sh
+sudo LANG_SEL=tr DOMAIN=cmr.example.com EMAIL=admin@example.com \
+  bash -c 'curl -fsSL https://raw.githubusercontent.com/very6778/cmr/main/install.sh \
+    | REPO_URL=https://github.com/very6778/cmr.git bash'
 
 # TLS'siz mod (Cloudflare Tunnel arkasında)
 sudo NO_TLS=1 bash install.sh
+
+# Private repo (token ile)
+sudo GITHUB_TOKEN='ghp_xxx' REPO_URL=https://github.com/very6778/cmr.git \
+  bash install.sh
 ```
 
 ## Ortam değişkenleri
@@ -61,6 +67,7 @@ sudo NO_TLS=1 bash install.sh
 | `EMAIL` | (sorulur) | Let's Encrypt admin email |
 | `NO_TLS` | `0` | `1` = sadece HTTP (CF Tunnel için) |
 | `SKIP_DNS_CHECK` | `0` | `1` = DNS doğrulamasını atla |
+| `GITHUB_TOKEN` | (yok) | Private repo clone'lamak için GitHub token |
 
 ## TUI önizleme
 
