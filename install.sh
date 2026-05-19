@@ -132,6 +132,38 @@ err()  { echo -e "  ${R}✗${X} $1" >&2; }
 info() { echo -e "  ${D}·${X} $1"; }
 die()  { err "$1"; exit 1; }
 
+# run_step "msg" cmd... — komutu calistirir, yaninda spinner doner,
+# bitince sure ile birlikte ✓ ya da ✗ basar. Hata varsa loglari gosterir.
+run_step() {
+  local msg="$1"; shift
+  local logf
+  logf=$(mktemp)
+  local start=$(date +%s)
+  printf "  ${D}·${X} ${msg}... "
+  ( "$@" ) >"$logf" 2>&1 &
+  local pid=$!
+  local sp='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    printf "\b${B}${sp:$((i%10)):1}${X}"
+    sleep 0.15
+    i=$((i+1))
+  done
+  wait "$pid"; local rc=$?
+  local elapsed=$(( $(date +%s) - start ))
+  if (( rc == 0 )); then
+    printf "\b${G}✓${X} ${D}(${elapsed}s)${X}\n"
+    rm -f "$logf"
+    return 0
+  else
+    printf "\b${R}✗${X} ${D}(exit ${rc})${X}\n"
+    echo "  ── last log lines ──"
+    tail -15 "$logf" | sed 's/^/    /'
+    rm -f "$logf"
+    return $rc
+  fi
+}
+
 # ─── intro ─────────────────────────────────────────────────────────
 echo
 echo -e "  ${BD}${M_INTRO_TITLE}${X}"
@@ -190,25 +222,24 @@ fi
 step "[2/8] ${M_STEP2}"
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-ok "apt update"
-
-apt-get install -y -qq ca-certificates curl gnupg lsb-release git ufw openssl dnsutils >/dev/null
-ok "curl, git, ufw, openssl, dnsutils"
+run_step "apt update" apt-get update -qq
+run_step "Paketler (curl, git, ufw, openssl, dnsutils)" \
+  apt-get install -y -qq ca-certificates curl gnupg lsb-release git ufw openssl dnsutils
 
 if ! command -v docker >/dev/null 2>&1; then
-  info "Installing Docker..."
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
-    > /etc/apt/sources.list.d/docker.list
-  apt-get update -qq
-  apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null
+  run_step "Docker repo anahtarı" bash -c '
+    install -m 0755 -d /etc/apt/keyrings &&
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg &&
+    chmod a+r /etc/apt/keyrings/docker.gpg &&
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu '"$VERSION_CODENAME"' stable" \
+      > /etc/apt/sources.list.d/docker.list'
+  run_step "apt update (docker repo dahil)" apt-get update -qq
+  run_step "Docker indirme + kurulum (1-3 dk)" \
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker >/dev/null
-  ok "Docker $(docker --version | awk '{print $3}' | tr -d ',') installed"
+  ok "Docker $(docker --version | awk '{print $3}' | tr -d ',') hazır"
 else
-  ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
+  ok "Docker $(docker --version | awk '{print $3}' | tr -d ',') zaten kurulu"
 fi
 
 docker compose version >/dev/null 2>&1 || die "docker compose plugin missing"
@@ -422,12 +453,10 @@ ok "UFW: ${SSH_PORT}, 80, 443"
 # ─── 7) build + up ─────────────────────────────────────────────────
 step "[7/8] ${M_STEP7}"
 
-info "Building images (first run: 2-5 min)..."
-docker compose -f docker-compose.standalone.yml --env-file .env build >/dev/null
-ok "Build complete"
-
-docker compose -f docker-compose.standalone.yml --env-file .env up -d
-ok "Containers started"
+run_step "Image build (ilk seferde 2-5 dk)" \
+  docker compose -f docker-compose.standalone.yml --env-file .env build
+run_step "Container'lar başlatılıyor" \
+  docker compose -f docker-compose.standalone.yml --env-file .env up -d
 
 # ─── 8) health ─────────────────────────────────────────────────────
 step "[8/8] ${M_STEP8}"
