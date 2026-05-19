@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env.local
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Node
+node_modules/
+.next/
+
+# Logs & outputs
+backend/logs/
+frontend/logs/
+backend/outputs/
+*.log
+
+# OS
+.DS_Store
+
+# Caddy data (runtime)
+caddy_data/
+caddy_config/
+
+# Local DB
+backend/local_data.db
