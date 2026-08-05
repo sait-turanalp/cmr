@@ -34,14 +34,9 @@ def init_db():
         conn = get_db_connection()
         try:
             c = conn.cursor()
-            c.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    data TEXT
-                )
-            ''')
+            # NOT: 'files' tablosu kaldirildi — her PDF uretiminde tum satirlarin
+            # JSON'unu yaziyordu ama hicbir yer okumuyordu. PDF zaten indirilince
+            # siliniyor; veriyi tutmanin degeri yok.
             c.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,20 +48,6 @@ def init_db():
             _initialized = True
         finally:
             conn.close()
-
-
-def save_file_metadata(filename, data_json_str):
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        c.execute('INSERT INTO files (filename, data) VALUES (?, ?)', (filename, data_json_str))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"DB Error: {e}")
-        return False
-    finally:
-        conn.close()
 
 
 # Ensure DB is created on import

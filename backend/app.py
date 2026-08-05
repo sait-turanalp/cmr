@@ -10,7 +10,6 @@ from datetime import datetime
 from dotenv import load_dotenv
 import os
 from flask_cors import CORS
-from database import save_file_metadata
 from cleanup_pdfs import start_background_cleanup
 from jobs_store import get_store
 import threading
@@ -425,7 +424,6 @@ def api_process_pdf():
         T["save"] = time.time()
         # PDF boyutu (header icin stat)
         size_bytes = os.path.getsize(out_path)
-        save_file_metadata(file_name, json.dumps(transformed_data, default=str))
         T["metadata"] = time.time()
         # Save bitti — simdi progress 100%'e cek
         store.update(job_id, progress_total)
