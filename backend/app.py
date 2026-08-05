@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, after_this_request
 import fitz
 import textwrap
 import io
@@ -287,7 +287,19 @@ def download_pdf(filename):
     if not os.path.exists(real):
         return jsonify({"error": "not found"}), 404
     response = send_file(real, as_attachment=True, download_name=filename, mimetype="application/pdf")
-    response.headers["Cache-Control"] = "public, max-age=3600"
+    # Tek kullanimlik: indirme bitince diskten sil. Kullanici uretip indiriyor,
+    # sunucuda tutmanin degeri yok. POSIX'te acik fd varken os.remove guvenli —
+    # inode stream bitene kadar yasar, sonra gercekten silinir.
+    # (cleanup_pdfs thread'i yine de duruyor: indirilmeden birakilanlar icin.)
+    @after_this_request
+    def _drop(resp):
+        try:
+            os.remove(real)
+        except OSError:
+            pass
+        return resp
+
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
