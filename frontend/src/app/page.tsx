@@ -3,10 +3,17 @@
 import { signIn } from "next-auth/react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function SignIn() {
   const { toast } = useToast();
   const router = useRouter();
+
+  // Dashboard'u kullanici sifreyi yazarken arka planda cek — giris aninda
+  // navigasyon bekleme suresi ~200ms yerine ~0 olur.
+  useEffect(() => {
+    router.prefetch("/dashboard");
+  }, [router]);
 
   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -27,12 +34,14 @@ export default function SignIn() {
           variant: "destructive",
         });
       } else {
+        // Once yonlendir, toast'i sonra goster — toast render'i navigasyonu
+        // bekletmesin.
+        router.push("/dashboard");
         toast({
           title: "Giriş Yapıldı",
           description: "Giriş başarılı. Yönlendiriliyorsunuz...",
           variant: "default",
         });
-        router.push("/dashboard");
       }
     } catch (error: any) {
       console.error("Login Error:", error);

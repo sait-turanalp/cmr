@@ -4,7 +4,7 @@ module.exports = {
             name: 'ucs-backend',
             cwd: './backend',
             script: './venv/bin/gunicorn',
-            args: '--bind 0.0.0.0:5001 --workers 1 --threads 4 --worker-class gthread --timeout 300 --graceful-timeout 30 --max-requests 200 --max-requests-jitter 30 app:app',
+            args: '--bind 0.0.0.0:5001 --workers 1 --threads 16 --worker-class gthread --timeout 600 --graceful-timeout 30 --max-requests 500 --max-requests-jitter 50 --preload app:app',
             interpreter: 'none',
             env: {
                 FLASK_ENV: 'production',
@@ -16,9 +16,9 @@ module.exports = {
             min_uptime: '10s',
             restart_delay: 3000,
             exp_backoff_restart_delay: 1000,
-            // Bellek: PM2 tum child process'leri dahil izler
-            // gunicorn master + worker toplam 800M gecerse yeniden baslatir
-            max_memory_restart: '800M',
+            // Bellek: PM2 tum child process'leri dahil izler.
+            // 16 thread + high page count islerinde 800M cok sikidir -> 4G.
+            max_memory_restart: '4G',
             // Loglar
             error_file: './backend/logs/backend-error.log',
             out_file: './backend/logs/backend-out.log',

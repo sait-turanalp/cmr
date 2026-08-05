@@ -46,23 +46,24 @@ function isBlockedRequest(req: Request): boolean {
 }
 
 export async function middleware(req: Request) {
+  const pathname = new URL(req.url).pathname;
+  const unprotectedRoutes = ["/api/auth", "/api/proxy"];
+
+  // Unprotected route'lar JWT decrypt'e girmez — progress polling saniyede 2
+  // istek atiyor, her birinde JWE decrypt gereksiz maliyet.
+  if (unprotectedRoutes.some((route) => pathname.startsWith(route))) {
+    return NextResponse.next();
+  }
+
   const secret = process.env.NEXTAUTH_SECRET;
   // @ts-ignore error-bypass
   const token = await getToken({ req, secret });
 
-  const unprotectedRoutes = ["/api/auth", "/api/proxy"];
-  const pathname = new URL(req.url).pathname;
-
-  // Block suspicious requests BEFORE any processing (only for unauthenticated)
   if (!token && isBlockedRequest(req)) {
     return new NextResponse(
       JSON.stringify({ error: "Bad Request" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
-  }
-
-  if (unprotectedRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.next();
   }
 
   if (!token) {
