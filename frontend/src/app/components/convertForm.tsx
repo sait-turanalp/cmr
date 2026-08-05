@@ -26,10 +26,11 @@ export function ConvertForm() {
   const [displayedProgress, setDisplayedProgress] = useState(0)  // Yumuşak animasyon için
   const [elapsedSec, setElapsedSec] = useState(0)
   const [currency, setCurrency] = useState<string>('$')
-  const [turboMode, setTurboMode] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('cmr-turbo-mode') === 'true'
-  })
+  // SSR'da her zaman false; localStorage mount sonrası okunur (hydration mismatch olmaz).
+  const [turboMode, setTurboMode] = useState(false)
+  useEffect(() => {
+    setTurboMode(localStorage.getItem('cmr-turbo-mode') === 'true')
+  }, [])
   const { toast } = useToast()
 
   const toggleTurbo = () => {
@@ -253,29 +254,39 @@ export function ConvertForm() {
 
   if (result) {
     return (
-      <ResultPage
-        fileName={result.fileName}
-        downloadUrl={result.downloadUrl}
-        sizeMb={result.sizeMb}
-        processingTime={result.processingTime}
-        pages={result.pages}
-        onReset={handleReset}
-      />
+      <div className="min-h-[75vh] flex items-center justify-center">
+        <ResultPage
+          fileName={result.fileName}
+          downloadUrl={result.downloadUrl}
+          sizeMb={result.sizeMb}
+          processingTime={result.processingTime}
+          pages={result.pages}
+          turboMode={turboMode}
+          onReset={handleReset}
+        />
+      </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold mb-2">PDF Oluştur</h1>
+        <p className="text-gray-600">Başlamak için bir .xlsx dosyası sürükleyin veya seçin.</p>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
       {/* Turbo toggle — sağ üst */}
       <div className="flex justify-end -mt-1">
         <div className="relative group flex items-center gap-2">
           <span className={`flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded border select-none transition-colors duration-200 ${turboMode ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
             <span style={turboMode ? {
-              background: 'linear-gradient(90deg, #FF2D00 0%, #FF8C00 55%, #FFE234 100%)',
+              background: 'linear-gradient(90deg, #FF2D00 0%, #FF6B00 60%, #FF9500 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
               color: 'transparent',
+              WebkitTextStrokeWidth: 0,
+              textShadow: 'none',
             } : { color: '#9CA3AF' }}>Turbo</span>
             {/* flame — right side of badge */}
             <span className="relative w-4 h-4 flex-shrink-0">
@@ -413,6 +424,17 @@ export function ConvertForm() {
           'PDF Oluştur'
         )}
       </Button>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-2">Yönergeler:</h2>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600">
+          <li>Dosyanın XLSX formatında olduğundan emin olun.</li>
+          <li>Dosyanın gerekli bütün sütunları içerdiğiden emin olun.</li>
+          <li>Dosyayı sürükleyin veya seçin.</li>
+          <li>Oluşturulan dosyayı indirin.</li>
+        </ol>
+      </div>
     </div>
   )
 }

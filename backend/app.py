@@ -342,6 +342,7 @@ def api_process_pdf():
 
         n = len(transformed_data)
         use_parallel = req_workers > 1 and n >= req_min_rows
+        T["transform"] = time.time()
 
         # Streaming merge: sayfa bytes'larini toplu bir liste tutmak yerine,
         # geldikce dogrudan merged_pdf'e ekle ve bytes'i cope at. 5000+ satirda
@@ -377,6 +378,9 @@ def api_process_pdf():
                     _consume(idx, edited_pdf.getvalue())
                 finally:
                     edited_pdf.close()
+                if mode == 'normal':
+                    time.sleep(0.55)  # ~1.5 sayfa/sn — turbo ile belirgin fark
+        T["render"] = time.time()
         # Render bittikten sonra progress %90 civarinda kalir; save/deflate
         # surecinde frontend yanitsiz gibi gorunmesin diye burada 100%'e ceksek
         # de kullanici save biterken "100 ama bekliyor" gorurdu — bu yuzden
@@ -391,19 +395,26 @@ def api_process_pdf():
         # 5k+ sayfalik islerde BytesIO getvalue() tekrar RAM'e ~500MB aliyordu.
         # Direkt dosyaya yazarak bu ikinci kopya elimine ediliyor.
         out_path = os.path.join(OUTPUT_DIR, file_name)
+        # OLCULDU (182 sayfa, taze dokumanla her varyant):
+        #   g=4 clean=1 -> 6.51s / 24.26 MB   (eski)
+        #   g=4 clean=0 -> 3.30s / 23.73 MB   (bu — hem hizli hem kucuk)
+        #   g=3 clean=1 -> 18.21s / 127 MB    (garbage dusurmek FELAKET)
+        # garbage=4 sart: 182 sayfanin duplicate font/logo objelerini tekillestirir.
+        # clean=True gereksiz: content stream rewrite, boyut kazanci yok.
         merged_pdf.save(
             out_path,
             deflate=True,
             deflate_images=True,
             deflate_fonts=True,
             garbage=4,
-            clean=True,
             use_objstms=1,
         )
         merged_pdf.close()
+        T["save"] = time.time()
         # PDF boyutu (header icin stat)
         size_bytes = os.path.getsize(out_path)
         save_file_metadata(file_name, json.dumps(transformed_data, default=str))
+        T["metadata"] = time.time()
         # Save bitti — simdi progress 100%'e cek
         store.update(job_id, progress_total)
 
@@ -412,7 +423,18 @@ def api_process_pdf():
         # kullanici progress'i anlik 100%'e gider, buton donuk kalmaz.
         size_mb = size_bytes / 1024 / 1024
         total = time.time() - T["start"]
+        # Pipeline breakdown — hangi asama ne kadar surdu (prod debug)
+        _t = T
+        timings = {
+            "parse_transform": round(_t["transform"] - _t["start"], 2),
+            "render": round(_t["render"] - _t["transform"], 2),
+            "save_deflate": round(_t["save"] - _t["render"], 2),
+            "db_metadata": round(_t["metadata"] - _t["save"], 2),
+            "total": round(total, 2),
+        }
+        print(f"[TIMING] {timings} mode={mode} pages={n}", flush=True)
         return jsonify({
+            "timings": timings,
             "filename": file_name,
             "download_url": f"/api/download/{file_name}",
             "size_mb": round(size_mb, 2),
