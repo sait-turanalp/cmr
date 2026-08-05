@@ -15,6 +15,9 @@ trap cleanup TERM INT QUIT
 WORKERS=${GUNICORN_WORKERS:-2}
 THREADS=${GUNICORN_THREADS:-8}
 TIMEOUT=${GUNICORN_TIMEOUT:-600}
+# Bellek geri kazanimi icin worker'i sik yenile: buyuk PDF isleri glibc
+# arena'sinda bellek birakiyor (malloc_trim + bu birlikte calisir).
+MAX_REQ=${GUNICORN_MAX_REQUESTS:-100}
 
 echo "[entrypoint] starting gunicorn: workers=${WORKERS} threads=${THREADS} timeout=${TIMEOUT}"
 
@@ -25,8 +28,8 @@ gunicorn \
     --worker-class gthread \
     --timeout ${TIMEOUT} \
     --graceful-timeout 30 \
-    --max-requests 500 \
-    --max-requests-jitter 50 \
+    --max-requests ${MAX_REQ} \
+    --max-requests-jitter 20 \
     --worker-tmp-dir /dev/shm \
     --preload \
     app:app &

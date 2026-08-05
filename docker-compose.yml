@@ -68,6 +68,13 @@ services:
       - PARALLEL_WORKERS=${PARALLEL_WORKERS}
       - PARALLEL_MIN_ROWS=${PARALLEL_MIN_ROWS}
       - MAX_ROWS_PER_REQUEST=${MAX_ROWS_PER_REQUEST}
+      - MAX_CONCURRENT_JOBS=${MAX_CONCURRENT_JOBS:-8}
+      # NOT: MALLOC_ARENA_MAX=2 denendi — RSS'i dusuruyor ama render'i %70
+      # yavaslatiyor (9.5s -> 16.9s, 182 satir). malloc_trim tek basina yeterli.
+      - GUNICORN_MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-100}
+    # Bellek tavani: sizinti olursa host'u degil container'i vurur, autoheal
+    # toparlar. Host 4.9 GB; 3 GB tavan sistemi ayakta tutar.
+    mem_limit: 3g
     volumes:
       # bind mount: named volume'den olculebilir sekilde hizli (7.45s -> 5.43s)
       # ve host'tan gorulebilir (hata ayiklama kolayligi)

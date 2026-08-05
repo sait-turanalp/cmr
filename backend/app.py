@@ -18,6 +18,20 @@ import atexit
 import time
 
 
+def _malloc_trim():
+    """glibc arena'sindaki serbest bellegi OS'a geri ver.
+
+    PyMuPDF'in C tarafi free() cagirsa bile glibc bellegi arena'da tutuyor;
+    buyuk bir isten sonra RSS 3.9 GB'da takili kaliyordu (olculdu). malloc_trim
+    olmadan bellek ancak worker yenilenince (max-requests 500) donuyor.
+    """
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass  # musl/alpine veya glibc disi ortamda sessizce atla
+
+
 def _shutdown_watchdog():
     """gthread worker kapanirken threading._shutdown() deadlock'a girebilir.
     Bu watchdog, kapanma 5 saniyeden uzun surerse os._exit() ile zorla cikar."""
@@ -85,7 +99,7 @@ PARALLEL_WORKERS = int(os.getenv("PARALLEL_WORKERS", "4"))
 PARALLEL_MIN_ROWS = int(os.getenv("PARALLEL_MIN_ROWS", "100"))
 # Cok yuksek row sayilari icin sert limit. 5k+ istekler tek conteynirde
 # OOM yapar cunku her satir ~1MB. Uzerini client'a onay mesajiyla yonlendir.
-MAX_ROWS_PER_REQUEST = int(os.getenv("MAX_ROWS_PER_REQUEST", "3000"))
+MAX_ROWS_PER_REQUEST = int(os.getenv("MAX_ROWS_PER_REQUEST", "2000"))
 # Ayni anda kabul edilen en fazla is. Asilirsa 503 — kuyruga alip herkesi
 # bekletmek yerine acikca reddediyoruz (RAM ve fork sayisi ust siniri).
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "8"))
@@ -540,6 +554,7 @@ def api_process_pdf():
         except Exception:
             pass
         gc.collect()
+        _malloc_trim()
 
 
 @app.route('/api/progress', methods=['GET', 'OPTIONS'])

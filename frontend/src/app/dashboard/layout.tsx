@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Sidebar } from '../components/sidebar'
+import { LoadBadge } from '../components/loadBadge'
 
 export const metadata: Metadata = {
   title: 'UCS Group CMR System',
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <div className="min-h-screen">
       <Sidebar />
+      <LoadBadge />
       <main className="p-8 pt-16 overflow-y-auto">
         {children}
       </main>
