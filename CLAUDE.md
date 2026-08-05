@@ -1,0 +1,84 @@
+# CMR — çalışma notları
+
+XLSX → toplu CMR PDF üreten servis. Mimari için `ARCHITECTURE.md` (gerektiğinde oku, her oturumda değil).
+
+## Nerede ne var
+
+- `backend/app.py` — HTTP + PDF hattı, tek dosya. Değişikliklerin çoğu burada.
+- `frontend/src/app/components/convertForm.tsx` — üretim akışı, turbo toggle
+- `frontend/src/app/components/resultPage.tsx` — sonuç ekranı
+- `docker-compose.yml` — tek ve gerçek deploy tanımı
+- `deploy/setup-host.sh` — yeni sunucuya taşırken bir kez
+
+Sunucu: `root@178.208.187.74`, uygulama `/opt/cmr`, alan adı `yedek.opik.online`.
+
+## Deploy
+
+```
+tar czf /tmp/cmr-src.tar.gz --exclude=node_modules --exclude=.next --exclude=venv \
+    --exclude=.git --exclude=__pycache__ --exclude='.DS_Store' \
+    backend frontend Dockerfile.* docker-compose.yml deploy
+scp /tmp/cmr-src.tar.gz root@178.208.187.74:/opt/cmr/
+ssh root@178.208.187.74 "cd /opt/cmr && tar xzf cmr-src.tar.gz && find . -name '._*' -delete \
+    && docker compose build && docker compose up -d"
+```
+
+Rollback: `/opt/cmr/_rollback/` altında container config yedekleri, `cmr-*:rollback-YYYYMMDD` imajları.
+
+## Doğrulama
+
+| Ne | Komut |
+|---|---|
+| Servisler ayakta | `ssh root@… "docker compose -f /opt/cmr/docker-compose.yml ps"` |
+| Site cevap veriyor | `curl -s -o /dev/null -w '%{http_code}' https://yedek.opik.online` |
+| Aşama süreleri | `docker logs cmr-backend \| grep TIMING \| tail -3` |
+| PDF silinme davranışı | üret → indir → `ls /opt/cmr/backend/outputs` boş olmalı |
+| Disk | `df -h /` ve `docker system df` |
+
+Performans referansı: 182 satır turbo ≈ 9-10 sn (render ~7, save ~2.5).
+Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
+
+## Foot-gun'lar (hepsi bu projede canımızı yaktı)
+
+**Docker**
+- `--env-file` yalnızca container *oluşturulurken* okunur. `docker restart` yeni env'i almaz — `.env` değiştiyse **recreate** şart. `PARALLEL_MIN_ROWS` bir kez sessizce `9999`'da kalıp turbo modu tamamen kapattı.
+- Docker daemon restart'ından sonra eski container'lar kirli kalabiliyor: pipeline 11 sn'den 22 sn'ye çıktı, recreate ile düzeldi. Daemon'a dokunduysan container'ları recreate et.
+- Frontend imajı `node:alpine` — içinde `python3` **yok**. Healthcheck'i `node -e` ile yaz.
+- Karmaşık `--health-cmd` tırnak cehennemi. Script dosyası yazıp `docker cp` ile koymak daha temiz.
+- macOS'ta `tar` AppleDouble (`._*`) dosyaları üretir, sunucuya sızar. Açtıktan sonra `find . -name '._*' -delete`.
+- **Named volume, PDF çıktısı için bind mount'tan belirgin yavaş.** Aynı iş: named volume'de save 9.8 sn / toplam 21 sn, bind mount'ta save 2.5 sn / toplam 9.9 sn. `outputs` bind mount kalmalı.
+
+**PyMuPDF**
+- `save(clean=True)` **kullanma**: 182 sayfada 6.5 sn ve boyut kazancı sıfır. Kaldırınca 3.3 sn, dosya biraz daha küçük.
+- `garbage=4` **şart**. 3'e veya 2'ye düşürmek dosyayı 24 MB'dan 127 MB'a çıkarır (tekrarlanan font/logo objeleri tekilleşmiyor).
+- Aynı doküman üzerinde ardışık `save()` ölçmek yanıltır — `save` dokümanı yerinde değiştirir, ikinci varyant zaten temizlenmiş belge üzerinde çalışır. Her varyant için baştan render et.
+
+**Paralellik**
+- 4 çekirdekte `PARALLEL_WORKERS=3` optimum. 4 yapınca ana süreçteki birleştirme işi (`insert_pdf`) çekirdek için yarışıyor, %7 yavaşlıyor.
+- Küçük dosyalarda havuz açmak zararlı — fork maliyeti render'dan uzun. Eşik `PARALLEL_MIN_ROWS=40`.
+
+**Next.js**
+- `localStorage`'ı `useState` başlangıç değerinde okumak hydration mismatch yaratır (sunucu `false`, istemci `true` üretir; React stil'i düzeltmez, öğe yanlış renkte kalır). `useEffect` içinde oku.
+- `NEXT_PUBLIC_*` istemci paketine gömülür. Sır koyma.
+
+**Ölçüm**
+- Backend `mode=normal`'da satır başına 0.55 sn **kasıtlı** bekler (turbo'yu pazarlanabilir kılmak için). Yavaşlık sanma.
+- Lokal M2, sunucudan ~6 kat hızlı. 182 sayfa lokalde 1.6 sn, sunucuda ~9.5 sn. Karşılaştırırken aynı makineyi kullan.
+
+## Disk hijyeni
+
+Zamanlayıcıya bağımlılık yok:
+- Build cache → `daemon.json` içindeki `builder.gc`, 2 GB tavan (Docker kendi temizler)
+- Container log → `log-opts` + `/etc/logrotate.d/docker-containers`
+- Üretilen PDF → indirilince silinir; artığı `cleanup_pdfs` süpürür
+- İmaj birikimi → deploy sonrası `docker image prune -f` (eski build katmanları)
+
+Bir kez 40 GB'a çıkmıştı (24.99 GB build cache). `deploy/setup-host.sh` bunu kalıcı olarak engeller.
+
+## Kalan işler
+
+- `NEXT_PUBLIC_API_KEY` istemcide açık — API anahtarı tarayıcıdan okunabiliyor
+- Giriş sabit kodlanmış (`admin`/`1234`), `users` tablosu kullanılmıyor
+- Hız sınırlama yok
+- Yedekleme ve uyarı yok
+- `.env` git'te takipli — anahtarlar geçmişte duruyor

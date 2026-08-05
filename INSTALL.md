@@ -7,7 +7,7 @@ Dokploy'dan bağımsız, herhangi bir **Ubuntu 20.04+** sunucuda tek komutla tam
 | Dosya | Ne yapar |
 |---|---|
 | `install.sh` | Akıllı kurulum scripti |
-| `docker-compose.standalone.yml` | Self-contained compose (Caddy + frontend + backend + redis + autoheal) |
+| `docker-compose.yml` | Self-contained compose (Caddy + frontend + backend + redis + autoheal) |
 | `Caddyfile` | Script çalışırken üretilir |
 | `.env` | Script çalışırken üretilir, secret'lar içinde |
 
@@ -125,8 +125,8 @@ sudo GITHUB_TOKEN='ghp_xxx' REPO_URL=https://github.com/very6778/cmr.git \
 
   URL:    https://cmr.example.com
   Dir:    /opt/cmr
-  Logs:   cd /opt/cmr && docker compose -f docker-compose.standalone.yml logs -f
-  Stop:   cd /opt/cmr && docker compose -f docker-compose.standalone.yml down
+  Logs:   cd /opt/cmr && docker compose logs -f
+  Stop:   cd /opt/cmr && docker compose down
 
   Üretilen secret'lar (şimdi kaydet, bir daha gösterilmeyecek):
     API_KEY=a73fdad20b66...
@@ -137,19 +137,19 @@ sudo GITHUB_TOKEN='ghp_xxx' REPO_URL=https://github.com/very6778/cmr.git \
 
 ```bash
 # Logları izle
-cd /opt/cmr && docker compose -f docker-compose.standalone.yml logs -f
+cd /opt/cmr && docker compose logs -f
 
 # Durdur
-cd /opt/cmr && docker compose -f docker-compose.standalone.yml down
+cd /opt/cmr && docker compose down
 
 # Güncelle (git pull + rebuild + restart)
 cd /opt/cmr && git pull && \
-  docker compose -f docker-compose.standalone.yml up -d --build
+  docker compose up -d --build
 ```
 
 ## Sorun giderme
 
 - **TLS sertifikası alınamadı:** Domain'in A kaydı bu sunucuya işaret etmiyor olabilir, ya da Cloudflare proxy açık. `dig +short DOMAIN` ile kontrol et.
 - **Port 80/443 dolu:** `ss -tlnp | grep -E ':(80|443)'` ile hangi process'in tuttuğuna bak. nginx/apache çalışıyorsa durdur: `sudo systemctl stop nginx apache2`.
-- **Healthcheck timeout:** `docker compose -f docker-compose.standalone.yml logs backend` ile backend hatalarına bak.
+- **Healthcheck timeout:** `docker compose logs backend` ile backend hatalarına bak.
 - **SSH bağlantı kesildi:** Failsafe IP eklendiği için kaynak IP'nden geri girebilirsin; değilse provider VNC.

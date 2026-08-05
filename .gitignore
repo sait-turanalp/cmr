@@ -30,3 +30,4 @@ caddy_config/
 
 # Local DB
 backend/local_data.db
+backend/app_v2.py

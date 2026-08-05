@@ -1,182 +1,117 @@
-version: '3.8'
+# Standalone deployment — Dokploy/Traefik bagimsiz.
+# install.sh ile birlikte calistirilir, Caddy kendi TLS'ini yonetir.
 
 services:
-  cmr:
+  caddy:
+    image: caddy:2-alpine
+    container_name: cmr-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CMR_DOMAIN=${CMR_DOMAIN}
+      - CMR_EMAIL=${CMR_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks:
+      - cmr-net
+
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+        - NEXT_PUBLIC_API_URL=${PUBLIC_URL}
         - NEXT_PUBLIC_API_KEY=${API_KEY}
     container_name: cmr-frontend
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    # Host port binding kaldirildi. Traefik dokploy-network uzerinden erisir.
     expose:
       - "3000"
     environment:
       - NODE_ENV=production
-      - BACKEND_URL=http://cmr-backend:5001
+      - BACKEND_URL=http://backend:5001
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
       - API_KEY=${API_KEY}
     depends_on:
-      cmr-backend:
+      backend:
         condition: service_healthy
     networks:
-      - cmr-network
-      - dokploy-network
+      - cmr-net
     healthcheck:
-      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000', (r) => { process.exit(r.statusCode < 500 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000',(r)=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
-      # Rate limit middleware tanimlari (CF arkasinda oldugumuz icin
-      # sourceCriterion ipStrategy depth=1 -> X-Forwarded-For'un ilk hop'unu
-      # gercek istemci olarak sayar). Agresif degil, flood koruma amacli.
-      - "traefik.http.middlewares.cmr-ratelimit.ratelimit.average=10"
-      - "traefik.http.middlewares.cmr-ratelimit.ratelimit.burst=20"
-      - "traefik.http.middlewares.cmr-ratelimit.ratelimit.period=1s"
-      - "traefik.http.middlewares.cmr-ratelimit.ratelimit.sourcecriterion.ipstrategy.depth=1"
-      # PDF endpoint'i icin daha sikidir: saniyede 2 req, burst 5.
-      - "traefik.http.middlewares.cmr-pdf-ratelimit.ratelimit.average=2"
-      - "traefik.http.middlewares.cmr-pdf-ratelimit.ratelimit.burst=5"
-      - "traefik.http.middlewares.cmr-pdf-ratelimit.ratelimit.period=1s"
-      - "traefik.http.middlewares.cmr-pdf-ratelimit.ratelimit.sourcecriterion.ipstrategy.depth=1"
-      # HTTPS router (Let's Encrypt otomatik sertifika)
-      - "traefik.http.routers.cmr-frontend.rule=Host(`yedek.opik.online`)"
-      - "traefik.http.routers.cmr-frontend.entrypoints=websecure"
-      - "traefik.http.routers.cmr-frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.cmr-frontend.middlewares=cmr-ratelimit"
-      - "traefik.http.services.cmr-frontend.loadbalancer.server.port=3000"
-      # PDF endpoint icin ayri router (daha sert rate limit)
-      - "traefik.http.routers.cmr-frontend-pdf.rule=Host(`yedek.opik.online`) && PathPrefix(`/api/proxy/process-pdf`)"
-      - "traefik.http.routers.cmr-frontend-pdf.entrypoints=websecure"
-      - "traefik.http.routers.cmr-frontend-pdf.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.cmr-frontend-pdf.service=cmr-frontend"
-      - "traefik.http.routers.cmr-frontend-pdf.middlewares=cmr-pdf-ratelimit"
-      - "traefik.http.routers.cmr-frontend-pdf.priority=100"
-      # HTTP router (CF Flexible uyumu)
-      - "traefik.http.routers.cmr-frontend-http.rule=Host(`yedek.opik.online`)"
-      - "traefik.http.routers.cmr-frontend-http.entrypoints=web"
-      - "traefik.http.routers.cmr-frontend-http.service=cmr-frontend"
-      - "traefik.http.routers.cmr-frontend-http.middlewares=cmr-ratelimit"
-      # Uzun PDF stream'leri icin buffer flush
-      - "traefik.http.services.cmr-frontend.loadbalancer.responseforwarding.flushinterval=100ms"
 
-  cmr-redis:
-    image: redis:7-alpine
-    container_name: cmr-redis
-    restart: always
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "2"
-    networks:
-      - cmr-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 384M
-
-  cmr-backend:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: cmr-backend
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    # Backend dis dunyaya acilmaz, sadece cmr-network uzerinden frontend erisir.
     expose:
       - "5001"
     environment:
-      - CORS_DOMAIN=${CORS_DOMAIN:-http://localhost:3000}
+      - CORS_DOMAIN=${CORS_DOMAIN}
       - API_KEY=${API_KEY}
-      - REDIS_URL=redis://cmr-redis:6379/0
-      - JOBS_BACKEND=${JOBS_BACKEND:-redis}
-      - PDF_MAX_AGE_HOURS=${PDF_MAX_AGE_HOURS:-2}
-      - PDF_CLEANUP_INTERVAL_SEC=${PDF_CLEANUP_INTERVAL_SEC:-900}
-      - PARALLEL_WORKERS=${PARALLEL_WORKERS:-3}
-      - PARALLEL_MIN_ROWS=${PARALLEL_MIN_ROWS:-100}
-      - MAX_ROWS_PER_REQUEST=${MAX_ROWS_PER_REQUEST:-3000}
+      - REDIS_URL=${REDIS_URL}
+      - JOBS_BACKEND=${JOBS_BACKEND}
+      - PDF_MAX_AGE_HOURS=${PDF_MAX_AGE_HOURS}
+      - PARALLEL_WORKERS=${PARALLEL_WORKERS}
+      - PARALLEL_MIN_ROWS=${PARALLEL_MIN_ROWS}
+      - MAX_ROWS_PER_REQUEST=${MAX_ROWS_PER_REQUEST}
     volumes:
-      - backend_outputs:/app/outputs
-      - backend_logs:/app/logs
+      # bind mount: named volume'den olculebilir sekilde hizli (7.45s -> 5.43s)
+      # ve host'tan gorulebilir (hata ayiklama kolayligi)
+      - ./backend/outputs:/app/outputs
+      - ./backend/logs:/app/logs
     depends_on:
-      cmr-redis:
+      redis:
         condition: service_healthy
     networks:
-      - cmr-network
+      - cmr-net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=8)"]
-      # Uzun PDF islerinde false-positive olmamasi icin toleranslar gevsetildi.
-      # 60s + 5 retry x 15s = yaklasik 135s healthy kalma toleransi.
-      interval: 60s
-      timeout: 15s
+      interval: 30s
+      timeout: 10s
       retries: 5
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '7'
-          memory: 10G
-        reservations:
-          cpus: '1'
-          memory: 2G
 
-  # Unhealthy container'lari otomatik yeniden baslat
+  redis:
+    image: redis:7-alpine
+    container_name: cmr-redis
+    restart: always
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    networks:
+      - cmr-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   autoheal:
     image: willfarrell/autoheal
     container_name: cmr-autoheal
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "2"
     environment:
       - AUTOHEAL_CONTAINER_LABEL=all
       - AUTOHEAL_INTERVAL=30
-      - AUTOHEAL_START_PERIOD=60
-      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
-  cmr-network:
+  cmr-net:
     driver: bridge
-  dokploy-network:
-    external: true
 
 volumes:
-  backend_outputs:
-  backend_logs:
+  caddy_data:
+  caddy_config:

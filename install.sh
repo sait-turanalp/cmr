@@ -250,7 +250,7 @@ step "[3/8] ${M_STEP3}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
 
-if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/docker-compose.standalone.yml" && -f "$SCRIPT_DIR/Dockerfile.backend" ]]; then
+if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/docker-compose.yml" && -f "$SCRIPT_DIR/Dockerfile.backend" ]]; then
   INSTALL_DIR="$SCRIPT_DIR"
   ok "Local repo: $INSTALL_DIR"
 elif [[ -d "$INSTALL_DIR/.git" ]]; then
@@ -454,21 +454,21 @@ ok "UFW: ${SSH_PORT}, 80, 443"
 step "[7/8] ${M_STEP7}"
 
 run_step "Image build (ilk seferde 2-5 dk)" \
-  docker compose -f docker-compose.standalone.yml --env-file .env build
+  docker compose --env-file .env build
 run_step "Container'lar başlatılıyor" \
-  docker compose -f docker-compose.standalone.yml --env-file .env up -d
+  docker compose --env-file .env up -d
 
 # ─── 8) health ─────────────────────────────────────────────────────
 step "[8/8] ${M_STEP8}"
 
 info "Servislerin hazır olması bekleniyor..."
 for i in $(seq 1 90); do
-  HEALTHY=$(docker compose -f docker-compose.standalone.yml ps --format json 2>/dev/null | grep -c '"Health":"healthy"' || true)
+  HEALTHY=$(docker compose ps --format json 2>/dev/null | grep -c '"Health":"healthy"' || true)
   if (( HEALTHY >= 2 )); then ok "Healthy: $HEALTHY container"; break; fi
   sleep 2
 done
 
-docker compose -f docker-compose.standalone.yml ps --format "table {{.Name}}\t{{.Status}}"
+docker compose ps --format "table {{.Name}}\t{{.Status}}"
 
 # ─── final summary ─────────────────────────────────────────────────
 echo
@@ -481,8 +481,8 @@ else
 fi
 echo -e "  ${BD}URL:${X}    ${PUB}"
 echo -e "  ${BD}Dir:${X}    $INSTALL_DIR"
-echo -e "  ${BD}Logs:${X}   cd $INSTALL_DIR && docker compose -f docker-compose.standalone.yml logs -f"
-echo -e "  ${BD}Stop:${X}   cd $INSTALL_DIR && docker compose -f docker-compose.standalone.yml down"
+echo -e "  ${BD}Logs:${X}   cd $INSTALL_DIR && docker compose logs -f"
+echo -e "  ${BD}Stop:${X}   cd $INSTALL_DIR && docker compose down"
 echo
 echo -e "  ${Y}${BD}${M_SECRETS_TITLE}${X}"
 echo -e "    ${D}API_KEY=${X}${API_KEY}"
