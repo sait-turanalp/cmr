@@ -22,10 +22,9 @@ export function ResultPage({ fileName, downloadUrl, sizeMb, processingTime, page
       </div>
       <div>
         <h2 className="text-2xl font-bold text-gray-900">PDF Hazır!</h2>
-        <p className="text-gray-600 mt-1">
-          {pages ? `${pages} sayfa` : 'PDF'} oluşturuldu
-          {sizeMb ? ` · ${sizeMb} MB` : ''}
-          {processingTime ? ` · ${processingTime}s` : ''}.
+        <p className="text-gray-500 mt-1 text-sm">
+          {pages ? `${pages} sayfa` : 'PDF'}
+          {processingTime ? `, ${processingTime < 60 ? `${Math.round(processingTime)} saniyede` : `${Math.round(processingTime / 60)} dakikada`} oluşturuldu` : ' oluşturuldu'}
         </p>
       </div>
       <div className="flex flex-col sm:flex-row justify-center gap-3 pt-4">

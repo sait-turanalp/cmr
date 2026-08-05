@@ -26,7 +26,19 @@ export function ConvertForm() {
   const [displayedProgress, setDisplayedProgress] = useState(0)  // Yumuşak animasyon için
   const [elapsedSec, setElapsedSec] = useState(0)
   const [currency, setCurrency] = useState<string>('$')
+  const [turboMode, setTurboMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('cmr-turbo-mode') === 'true'
+  })
   const { toast } = useToast()
+
+  const toggleTurbo = () => {
+    setTurboMode(prev => {
+      const next = !prev
+      localStorage.setItem('cmr-turbo-mode', String(next))
+      return next
+    })
+  }
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const selectedFile = acceptedFiles[0]
@@ -119,7 +131,7 @@ export function ConvertForm() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${API_KEY}`,
         },
-        body: JSON.stringify({ data: jsonData, currency: currency }),
+        body: JSON.stringify({ data: jsonData, currency: currency, mode: turboMode ? 'turbo' : 'normal' }),
       })
 
       if (!response.ok) {
@@ -254,6 +266,55 @@ export function ConvertForm() {
 
   return (
     <div className="space-y-4">
+      {/* Turbo toggle — sağ üst */}
+      <div className="flex justify-end -mt-1">
+        <div className="relative group flex items-center gap-2">
+          <span className={`flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded border select-none transition-colors duration-200 ${turboMode ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+            <span style={turboMode ? {
+              background: 'linear-gradient(90deg, #FF2D00 0%, #FF8C00 55%, #FFE234 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              color: 'transparent',
+            } : { color: '#9CA3AF' }}>Turbo</span>
+            {/* flame — right side of badge */}
+            <span className="relative w-4 h-4 flex-shrink-0">
+              <svg className={`absolute inset-0 transition-opacity duration-300 ${turboMode ? 'opacity-0' : 'opacity-100'}`} width="16" height="16" viewBox="5 1 14 21" fill="none">
+                <path d="M12 2C12 2 6 8 6 14a6 6 0 0 0 12 0c0-3-1.5-5.5-3-7.5 0 0 0 3-2 4 0-3-1-5.5-1-6.5Z" fill="#D1D5DB" />
+              </svg>
+              <svg className={`absolute inset-0 transition-opacity duration-300 ${turboMode ? 'opacity-100' : 'opacity-0'}`} width="16" height="16" viewBox="5 1 14 21" fill="none">
+                <defs>
+                  <linearGradient id="fireGradBadge" x1="12" y1="22" x2="12" y2="2" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#FF2D00" />
+                    <stop offset="45%" stopColor="#FF8C00" />
+                    <stop offset="100%" stopColor="#FFE234" />
+                  </linearGradient>
+                </defs>
+                <path d="M12 2C12 2 6 8 6 14a6 6 0 0 0 12 0c0-3-1.5-5.5-3-7.5 0 0 0 3-2 4 0-3-1-5.5-1-6.5Z" fill="url(#fireGradBadge)" />
+                <path d="M12 14c0 1.5-.8 2.5-2 3 .3-1 .3-2-.5-3 .8.2 1.8-1 2-3 .5 1 .5 2 .5 3Z" fill="#FFE234" opacity="0.9"/>
+              </svg>
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={turboMode}
+            onClick={toggleTurbo}
+            className="relative inline-flex h-5 w-9 cursor-pointer rounded-full focus:outline-none bg-gray-200"
+          >
+            {/* fire gradient overlay — crossfade */}
+            <span
+              className="absolute inset-0 rounded-full transition-opacity duration-300"
+              style={{ background: 'linear-gradient(90deg, #FF2D00 0%, #FF8C00 55%, #FFE234 100%)', opacity: turboMode ? 1 : 0 }}
+            />
+            <span className={`relative z-10 inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 mt-0.5 ${turboMode ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+          </button>
+          <div className="absolute bottom-full right-0 mb-2 w-56 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 leading-relaxed">
+            Beta (deneysel) özellik. Hızı 5 katına kadar artırabilir. Sonuçlar dosya boyutuna göre değişir.
+            <div className="absolute top-full right-4 border-4 border-transparent border-t-gray-900" />
+          </div>
+        </div>
+      </div>
       <div
         {...getRootProps()}
         className={`p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary'

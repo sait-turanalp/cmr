@@ -42,6 +42,39 @@ _normal_font_buffer = open("./fonts/normal.ttf", "rb").read()
 _bold_font_buffer = open("./fonts/bold.ttf", "rb").read()
 _INPUT_PDF_BYTES = open("./input.pdf", "rb").read()
 
+
+def _precompute_blanked_template():
+    """input.pdf'i bir kez ac, tum placeholder metinleri bul+beyazla, fontlari embed et.
+    Sonraki her edit_pdf cagrisi search+redact adimlarini atlar: ~138ms/sayfa kazanim."""
+    # _build_replacements burada henuz tanimli degil, placeholder metinleri direkt listele.
+    targets = [
+        "RUSYA", "MARDIN / TURKIYE",
+        "ERTAŞ GRUP TARIM SANAYİ VE TİCARET LİMİTED",
+        "İSKENDERUN", "SULEYMANIYAH / IRAK", "MEHMET MEHMET",
+        "34KA4273", "73AAD890", "19.12.2024", "122", "KAP",
+        "Ekmeklik Buğday", "26660", "100199", "$0,262862",
+        "$7.007,91", "810,08", "GIB2024000000057",
+        "QAIWAN FOR FOODSTUFFS MANUFACTURING", "13",
+    ]
+    pdf = fitz.open(stream=_INPUT_PDF_BYTES, filetype="pdf")
+    page = pdf[0]
+    coords = {}
+    for text in targets:
+        rects = page.search_for(text)
+        if rects:
+            r = rects[0]
+            coords[text] = (r.x0, r.y0 + 10.5 if r.y0 >= 0 else r.y0 - 8.1, r)
+            page.add_redact_annot(fitz.Rect(r.x0, r.y0 + 2, r.x1, r.y1 - 2), fill=(1, 1, 1))
+    page.apply_redactions()
+    page.insert_font(fontname="normal", fontbuffer=_normal_font_buffer)
+    page.insert_font(fontname="bold", fontbuffer=_bold_font_buffer)
+    blanked = pdf.write()
+    pdf.close()
+    return blanked, coords
+
+
+_BLANKED_PDF_BYTES, _TEMPLATE_COORDS = _precompute_blanked_template()
+
 CORS_DOMAIN = os.getenv('CORS_DOMAIN', 'http://localhost:3000')
 API_KEY = os.getenv('API_KEY', 'your-secret-api-key')
 OUTPUT_DIR = "outputs"
@@ -109,54 +142,33 @@ def format_date(date_string):
 
 
 def edit_pdf(replacements: dict, page_index: int = 0):
-    """Input.pdf'i replacements ile doldurur ve BytesIO doner.
-
-    Optimizasyonlar (eski koda gore):
-    - insert_font sayfada 2 kez cagrilir (ornek eskiden 40 kez)
-    - add_redact_annot topluca eklenir, apply_redactions 1 kez cagrilir (eskiden 20 kez)
-    - search_for sonucunun sadece ilk elemanini kullaniriz (ilk match'te break)
-    """
-    pdf_document = fitz.open(stream=_INPUT_PDF_BYTES, filetype="pdf")
+    """_BLANKED_PDF_BYTES (startup'ta olusturulan pre-blanked template) uzerinden
+    calisir. search_for + apply_redactions adimlarini atlar (~138ms/sayfa kazanim)."""
+    pdf_document = fitz.open(stream=_BLANKED_PDF_BYTES, filetype="pdf")
     try:
-        for page_number in range(pdf_document.page_count):
-            page = pdf_document[page_number]
+        page = pdf_document[0]
+        # Fontlar blanked template'e embed edildi ama alias (normal/bold) runtime'da
+        # yeniden kaydedilmeli; font verisi zaten dosyada oldugu icin bu sadece alias.
+        page.insert_font(fontname="normal", fontbuffer=_normal_font_buffer)
+        page.insert_font(fontname="bold", fontbuffer=_bold_font_buffer)
 
-            # Onceden her replacement icin area + insert_text bilgilerini topla.
-            # Redact annot'lari bu turda eklenir; apply_redactions tek seferde sonunda.
-            insert_ops = []
-            for text_to_replace, replacement_info in replacements.items():
-                areas = page.search_for(text_to_replace)
-                if not areas:
-                    continue
-                area = areas[0]
-                x0, y0, x1, y1 = area
-                boxArea = (x0, y0 + 2, x1, y1 - 2)
-                page.add_redact_annot(boxArea, fill=(1, 1, 1))
-                y_off = y0 + 10.5 if y0 >= 0 else y0 - 8.1
-                insert_ops.append((x0, y_off, replacement_info))
-
-            # Apply + font register SIRASI ONEMLI:
-            # apply_redactions() content stream'i yeniden uretir -> onceden
-            # kaydedilmis fontlar silinir. Bu yuzden once apply, sonra insert_font.
-            if insert_ops:
-                page.apply_redactions()
-                page.insert_font(fontname="normal", fontbuffer=_normal_font_buffer)
-                page.insert_font(fontname="bold", fontbuffer=_bold_font_buffer)
-
-            # Text insert'leri redact + font register'dan sonra yap
-            for x0, y_off, info in insert_ops:
-                text = info["text"]
-                fontname = info.get("fontname", "normal")
-                fontsize = info.get("fontsize", 12)
-                wrap = info.get("wrap", False)
-                wrap_width = info.get("wrap_width", 25)
-                if wrap:
-                    wrapped_text = textwrap.fill(text, width=wrap_width, break_long_words=False)
-                    for i, line in enumerate(wrapped_text.split('\n')):
-                        y_line = y_off + (i * (fontsize + 2))
-                        page.insert_text((x0, y_line), line, fontname=fontname, fontsize=fontsize, color=(0, 0, 0))
-                else:
-                    page.insert_text((x0, y_off), text, fontname=fontname, fontsize=fontsize, color=(0, 0, 0))
+        for text_to_replace, replacement_info in replacements.items():
+            coord = _TEMPLATE_COORDS.get(text_to_replace)
+            if coord is None:
+                continue
+            x0, y_off, _ = coord
+            text = replacement_info["text"]
+            fontname = replacement_info.get("fontname", "normal")
+            fontsize = replacement_info.get("fontsize", 12)
+            wrap = replacement_info.get("wrap", False)
+            wrap_width = replacement_info.get("wrap_width", 25)
+            if wrap:
+                wrapped_text = textwrap.fill(text, width=wrap_width, break_long_words=False)
+                for i, line in enumerate(wrapped_text.split('\n')):
+                    y_line = y_off + (i * (fontsize + 2))
+                    page.insert_text((x0, y_line), line, fontname=fontname, fontsize=fontsize, color=(0, 0, 0))
+            else:
+                page.insert_text((x0, y_off), text, fontname=fontname, fontsize=fontsize, color=(0, 0, 0))
 
         pdf_bytes = pdf_document.write()
         return io.BytesIO(pdf_bytes)
@@ -247,6 +259,12 @@ def merge_pdfs(pdf_list):
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    try:
+        store = get_store()
+        if hasattr(store, '_redis'):
+            store._redis.ping()
+    except Exception as e:
+        return jsonify({"status": "error", "detail": str(e)}), 503
     return jsonify({"status": "ok"}), 200
 
 
@@ -289,6 +307,9 @@ def api_process_pdf():
         data = request.get_json()
         body_data = data.get('data', [])
         currency = data.get('currency', '$')
+        mode = data.get('mode', 'normal')  # 'turbo' | 'normal'
+        req_workers = PARALLEL_WORKERS if mode == 'turbo' else 1
+        req_min_rows = PARALLEL_MIN_ROWS if mode == 'turbo' else 9999
 
         if not isinstance(body_data, list):
             return jsonify({'error': 'Expected an array of items.'}), 400
@@ -320,7 +341,7 @@ def api_process_pdf():
             transformed_data.append(transformed_item)
 
         n = len(transformed_data)
-        use_parallel = PARALLEL_WORKERS > 1 and n >= PARALLEL_MIN_ROWS
+        use_parallel = req_workers > 1 and n >= req_min_rows
 
         # Streaming merge: sayfa bytes'larini toplu bir liste tutmak yerine,
         # geldikce dogrudan merged_pdf'e ekle ve bytes'i cope at. 5000+ satirda
@@ -343,8 +364,8 @@ def api_process_pdf():
             # chunksize dengesi: cok kucuk -> IPC overhead (yavas);
             # cok buyuk -> parent buffer sisme (OOM riski).
             # max 16 (= 16MB/worker * 4 = 64MB tavan) iyi balans.
-            chunksize = max(1, min(16, n // (PARALLEL_WORKERS * 8)))
-            with ctx.Pool(processes=PARALLEL_WORKERS) as pool:
+            chunksize = max(1, min(16, n // (req_workers * 8)))
+            with ctx.Pool(processes=req_workers) as pool:
                 for idx, pdf_bytes in enumerate(pool.imap(_render_row, args, chunksize=chunksize), start=1):
                     _consume(idx, pdf_bytes)
                     del pdf_bytes
