@@ -69,12 +69,42 @@ deploy/           Host kurulumu (docker daemon config, setup script)
 6. **Kaydetme**: `garbage=4` tekrarlanan font/logo objelerini tekilleştirir — dosyayı 5 katı küçültür
 7. **İndirme**: dosya diske yazılır, URL döner; indirme bitince **silinir**
 
+## Eşzamanlı kullanıcılar — çekirdek paylaşımı
+
+Kuyruk yok: herkes hemen başlar, yalnızca **payı** küçülür (weighted fair share).
+
+- Redis'teki `cmr:jobs:active` ZSET aktif iş sayısını tutar (orphan kayıtlar
+  otomatik ayıklanır — süreç SIGKILL alsa bile sayaç sızmaz).
+- Pay: `round(PARALLEL_WORKERS / aktif_iş)`, en az 1.
+  → 1 iş: 3 işçi · 2 iş: 2'şer · 3+ iş: 1'er
+- Pay **her 40 satırda yeniden hesaplanır** (`REBALANCE_EVERY_ROWS`). Başka bir iş
+  bitince boşalan çekirdekler devam edenlere hemen dağılır; sabit paylaşımda son
+  gelen iş 1 işçide kilitli kalıyordu.
+- `MAX_CONCURRENT_JOBS` (8) aşılırsa kabul edilmez — kuyrukta bekletmek yerine
+  açık 503 döner.
+- `/api/active` anlık yükü verir: `active_jobs`, `worker_share`, `capacity`.
+
+Ölçüldü (182 satır, aynı anda N kullanıcı):
+
+| Kullanıcı | Toplam | İş başına | Adalet (yavaş/hızlı) |
+|---|---|---|---|
+| 1 | 10.9 sn | 10.9 sn | 1.00x |
+| 2 | 15.4 sn | 15.1 sn | 1.04x |
+| 3 | 36.1 sn | 29.9 sn | 1.50x |
+| 4 | 39.4 sn | 34.7 sn | 1.28x |
+
+Dayanıklılık: bir iş yarıda kesilse diğerleri etkilenmiyor ve sayaç toparlanıyor;
+kapasite aşımında beklenmedik hata değil düzgün 503 dönüyor; stres sonrası tek iş
+normal hızına (12 sn, 3 işçi) dönüyor.
+
 ## Değişmezler
 
 - **Üretilen PDF diskte kalmaz.** İndirme tamamlanınca `after_this_request` ile silinir; indirilmeyenleri `cleanup_pdfs` `PDF_MAX_AGE_HOURS` sonra süpürür.
 - **Kalıcı veri yok.** Redis persistence kapalı, SQLite'da yalnızca boş `users` tablosu. Sistem yeniden kurulsa kaybolacak bir şey yok.
 - **Backend hep senkron.** `job_id` PDF bittikten *sonra* döner; progress ayrı endpoint'ten okunur.
 - **Turbo yalnızca istek başına.** `mode` gövdede gelir, global env'i değiştirmez.
+- **Çekirdek bütçesi sabittir.** Eşzamanlı işler bütçeyi paylaşır; hiçbir iş
+  diğerinin payını çalamaz, hiçbir iş kuyrukta beklemez.
 - **Kod imaja girer.** Deploy = build + `compose up -d`. Çalışan container'a dosya kopyalanmaz.
 - **`outputs` bind mount'tur, named volume değil** — ölçüldü, named volume aynı işi 2 kat yavaş yapıyor.
 
@@ -90,6 +120,8 @@ Tümü `/opt/cmr/.env` (sunucuda) — compose bunu okur.
 | `PARALLEL_MIN_ROWS` | Bu satırdan azsa havuz açılmaz (fork maliyeti > kazanç) |
 | `PDF_MAX_AGE_HOURS` | İndirilmemiş PDF'in ömrü |
 | `MAX_ROWS_PER_REQUEST` | Üst sınır (aşılırsa 413) |
+| `MAX_CONCURRENT_JOBS` | Aynı anda kabul edilen iş sayısı (aşılırsa 503) |
+| `REBALANCE_EVERY_ROWS` | Kaç satırda bir çekirdek payı yeniden hesaplanır |
 | `NEXT_PUBLIC_*` | **Tarayıcıya gömülür** — gizli değer koymayın |
 
 ## Ölçülmüş davranış

@@ -14,6 +14,7 @@ API (her iki backend icin ayni):
     get(job_id) -> dict | None
     representative() -> (job_id, dict) | None  # V1 uyumluluk
     any_active() -> bool
+    active_count() -> int
 """
 
 import os
@@ -82,6 +83,15 @@ class MemoryStore:
                 finished.sort(key=lambda kv: kv[1]["finished_at"], reverse=True)
                 return finished[0][0], dict(finished[0][1])
         return None
+
+    def active_count(self) -> int:
+        """Su an calisan is sayisi. Cok eski (orphan) kayitlar sayilmaz."""
+        now = time.time()
+        with self._lock:
+            return sum(
+                1 for j in self._jobs.values()
+                if not j.get("finished") and (now - j.get("started_at", now)) < ACTIVE_ORPHAN_SECONDS
+            )
 
     def any_active(self) -> bool:
         with self._lock:
@@ -205,6 +215,33 @@ class RedisStore:
         except Exception as e:
             print(f"[jobs_store] representative error: {e}")
         return None
+
+    def active_count(self) -> int:
+        """Su an calisan is sayisi.
+
+        any_active() ile ayni orphan mantigi: ZSET'te durup hash'i kaybolmus
+        kayitlar (SIGKILL sonrasi finish cagrilamamis) sayilmaz ve temizlenir.
+        Bu sayac is paylasimini belirledigi icin sizmasi kritik — sizerse
+        herkese hak ettiginden az worker dusuyordu.
+        """
+        try:
+            active_ids = self._redis.zrange(f"{self._prefix}:jobs:active", 0, -1)
+            if not active_ids:
+                return 0
+            pipe = self._redis.pipeline()
+            for jid in active_ids:
+                pipe.exists(self._job_key(jid))
+            flags = pipe.execute()
+            orphans = [jid for jid, ex in zip(active_ids, flags) if not ex]
+            if orphans:
+                cp = self._redis.pipeline()
+                for jid in orphans:
+                    cp.zrem(f"{self._prefix}:jobs:active", jid)
+                cp.execute()
+            return sum(1 for ex in flags if ex)
+        except Exception as e:
+            print(f"[jobs_store] active_count error: {e}")
+            return 1  # Redis erisilemiyorsa tek is varmis gibi davran
 
     def any_active(self) -> bool:
         """ZSET'teki aktif job'larin HASH'i da var mi kontrol eder.

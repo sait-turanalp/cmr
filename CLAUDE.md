@@ -34,6 +34,8 @@ Rollback: `/opt/cmr/_rollback/` altında container config yedekleri, `cmr-*:roll
 | Aşama süreleri | `docker logs cmr-backend \| grep TIMING \| tail -3` |
 | PDF silinme davranışı | üret → indir → `ls /opt/cmr/backend/outputs` boş olmalı |
 | Disk | `df -h /` ve `docker system df` |
+| Anlık yük | `curl -s https://yedek.opik.online/api/proxy/active` |
+| Eşzamanlılık | `scratchpad/load_test.py all` (1-4 kullanıcı) · `resilience_test.py` (kesme/kapasite) |
 
 Performans referansı: 182 satır turbo ≈ 9-10 sn (render ~7, save ~2.5).
 Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
@@ -52,6 +54,10 @@ Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
 - `save(clean=True)` **kullanma**: 182 sayfada 6.5 sn ve boyut kazancı sıfır. Kaldırınca 3.3 sn, dosya biraz daha küçük.
 - `garbage=4` **şart**. 3'e veya 2'ye düşürmek dosyayı 24 MB'dan 127 MB'a çıkarır (tekrarlanan font/logo objeleri tekilleşmiyor).
 - Aynı doküman üzerinde ardışık `save()` ölçmek yanıltır — `save` dokümanı yerinde değiştirir, ikinci varyant zaten temizlenmiş belge üzerinde çalışır. Her varyant için baştan render et.
+
+**Eşzamanlılık**
+- Pay iş başlarken sabitlenirse son gelen 1 işçide kilitli kalır — ölçüldü: 4 kullanıcıda en yavaş/en hızlı farkı 1.94x. Çözüm, payı her 40 satırda yeniden hesaplamak (1.28x'e indi).
+- Aktif iş sayacı sızarsa herkese hak ettiğinden az işçi düşer. `active_count()` orphan kayıtları (hash'i kaybolmuş ZSET girdileri) ayıklar — SIGKILL sonrası bile sayaç doğru.
 
 **Paralellik**
 - 4 çekirdekte `PARALLEL_WORKERS=3` optimum. 4 yapınca ana süreçteki birleştirme işi (`insert_pdf`) çekirdek için yarışıyor, %7 yavaşlıyor.

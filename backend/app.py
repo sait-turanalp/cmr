@@ -86,6 +86,26 @@ PARALLEL_MIN_ROWS = int(os.getenv("PARALLEL_MIN_ROWS", "100"))
 # Cok yuksek row sayilari icin sert limit. 5k+ istekler tek conteynirde
 # OOM yapar cunku her satir ~1MB. Uzerini client'a onay mesajiyla yonlendir.
 MAX_ROWS_PER_REQUEST = int(os.getenv("MAX_ROWS_PER_REQUEST", "3000"))
+# Ayni anda kabul edilen en fazla is. Asilirsa 503 — kuyruga alip herkesi
+# bekletmek yerine acikca reddediyoruz (RAM ve fork sayisi ust siniri).
+MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "8"))
+# Kac satirda bir cekirdek payi yeniden hesaplanir. Kucuk = daha adil ama
+# daha cok pool yeniden kurulumu (~50ms fork). 40 iyi denge.
+REBALANCE_EVERY_ROWS = int(os.getenv("REBALANCE_EVERY_ROWS", "40"))
+
+
+def _worker_share(active_jobs: int) -> int:
+    """Cekirdek butcesini aktif isler arasinda paylastir (weighted fair share).
+
+    Amac: 2. kullanici geldiginde ikisinin de fork havuzu acip 4 cekirdegi
+    asiri abone etmesini onlemek. Herkes hemen basliyor, sadece payi kuculuyor
+    — kimse kuyrukta beklemiyor.
+
+        1 is  -> 3 worker    2 is -> 2'ser    3+ is -> 1'er
+    """
+    if active_jobs <= 1:
+        return PARALLEL_WORKERS
+    return max(1, round(PARALLEL_WORKERS / active_jobs))
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
@@ -272,6 +292,25 @@ def health_check():
 _SAFE_FILENAME_RE = re.compile(r'^out_[\w\-.]+_[a-f0-9]{8}\.pdf$')
 
 
+@app.route('/api/active', methods=['GET'])
+def api_active():
+    """Anlik yuk. Frontend rozeti bunu okur.
+
+    Auth istemez: sadece sayac doner, veri sizdirmaz ve rozetin her
+    yuklemede calismasi gerekiyor.
+    """
+    try:
+        n = get_store().active_count()
+    except Exception:
+        n = 0
+    return jsonify({
+        "active_jobs": n,
+        "worker_share": _worker_share(max(1, n)),
+        "max_workers": PARALLEL_WORKERS,
+        "capacity": MAX_CONCURRENT_JOBS,
+    })
+
+
 @app.route('/api/download/<path:filename>', methods=['GET'])
 def download_pdf(filename):
     # Path traversal / injection korumasi
@@ -319,11 +358,18 @@ def api_process_pdf():
         body_data = data.get('data', [])
         currency = data.get('currency', '$')
         mode = data.get('mode', 'normal')  # 'turbo' | 'normal'
-        req_workers = PARALLEL_WORKERS if mode == 'turbo' else 1
         req_min_rows = PARALLEL_MIN_ROWS if mode == 'turbo' else 9999
 
         if not isinstance(body_data, list):
             return jsonify({'error': 'Expected an array of items.'}), 400
+
+        # Kabul kontrolu — job yaratmadan ONCE. Tavani asarsak acikca reddet.
+        if store.active_count() >= MAX_CONCURRENT_JOBS:
+            return jsonify({
+                'error': 'Sistem su an yogun. Lutfen birkac saniye sonra tekrar deneyin.',
+                'busy': True,
+                'active_jobs': MAX_CONCURRENT_JOBS,
+            }), 503
 
         if len(body_data) > MAX_ROWS_PER_REQUEST:
             return jsonify({
@@ -338,6 +384,11 @@ def api_process_pdf():
         save_reserve = max(int(n_rows * 0.1), 5)
         progress_total = n_rows + save_reserve
         job_id = store.new_job(total=progress_total)
+
+        # Payi job KAYDEDILDIKTEN sonra hesapla: kendimiz de sayilalim ki
+        # es zamanli iki istek birbirini gormeden tam pay almasin.
+        active_jobs = max(1, store.active_count())
+        req_workers = _worker_share(active_jobs) if mode == 'turbo' else 1
 
         transformed_data = []
         for item in body_data:
@@ -372,15 +423,35 @@ def api_process_pdf():
 
         if use_parallel:
             ctx = mp.get_context("fork")
-            args = [(entry, currency, idx) for idx, entry in enumerate(transformed_data, start=1)]
-            # chunksize dengesi: cok kucuk -> IPC overhead (yavas);
-            # cok buyuk -> parent buffer sisme (OOM riski).
-            # max 16 (= 16MB/worker * 4 = 64MB tavan) iyi balans.
-            chunksize = max(1, min(16, n // (req_workers * 8)))
-            with ctx.Pool(processes=req_workers) as pool:
-                for idx, pdf_bytes in enumerate(pool.imap(_render_row, args, chunksize=chunksize), start=1):
-                    _consume(idx, pdf_bytes)
-                    del pdf_bytes
+            all_args = [(entry, currency, idx) for idx, entry in enumerate(transformed_data, start=1)]
+            done = 0
+            cur_share = req_workers
+            pool = None
+            try:
+                while done < n:
+                    # Payi HER DILIMDE yeniden degerlendir: baska bir is bittiginde
+                    # bosalan cekirdekler hemen kalanlara dagilir. Sabit paylasimda
+                    # son gelen is 1 worker'da kilitli kaliyordu (olculdu: 4 kisilik
+                    # testte en yavas/en hizli farki 1.94x).
+                    share = _worker_share(max(1, store.active_count())) if mode == 'turbo' else 1
+                    if pool is None or share != cur_share:
+                        if pool is not None:
+                            pool.terminate()
+                            pool.join()
+                        cur_share = share
+                        pool = ctx.Pool(processes=cur_share)
+                    slice_args = all_args[done:done + REBALANCE_EVERY_ROWS]
+                    # chunksize dengesi: cok kucuk -> IPC overhead; cok buyuk ->
+                    # parent buffer sismesi (OOM riski). max 16 iyi balans.
+                    chunksize = max(1, min(16, len(slice_args) // (cur_share * 8)))
+                    for pdf_bytes in pool.imap(_render_row, slice_args, chunksize=chunksize):
+                        done += 1
+                        _consume(done, pdf_bytes)
+                        del pdf_bytes
+            finally:
+                if pool is not None:
+                    pool.terminate()
+                    pool.join()
         else:
             for idx, entry in enumerate(transformed_data, start=1):
                 replacements = _build_replacements(entry, currency)
@@ -442,9 +513,12 @@ def api_process_pdf():
             "db_metadata": round(_t["metadata"] - _t["save"], 2),
             "total": round(total, 2),
         }
-        print(f"[TIMING] {timings} mode={mode} pages={n}", flush=True)
+        print(f"[TIMING] {timings} mode={mode} pages={n} workers_start={req_workers} active_start={active_jobs}", flush=True)
         return jsonify({
             "timings": timings,
+            "workers_used": req_workers,
+            "rebalanced": True,
+            "active_jobs_at_start": active_jobs,
             "filename": file_name,
             "download_url": f"/api/download/{file_name}",
             "size_mb": round(size_mb, 2),
