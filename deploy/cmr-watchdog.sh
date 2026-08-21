@@ -86,9 +86,7 @@ if [ -z "$STILL" ]; then
     logger -t cmr-watchdog "kesinti suresi: $OUTAGE"
     sh "$HERE/notify.sh" "Sistem kendini onardi" \
        "$DEAD_HUMAN $OUTAGE durdu, geri geldi.
-Bir sey yapmana gerek yok.
-
-https://yedek.opik.online" \
+Bir sey yapmana gerek yok." \
        "default" "white_check_mark" "ok-$DEAD_HUMAN"
 else
     logger -t cmr-watchdog "TOPARLANAMADI:$STILL"
@@ -99,8 +97,6 @@ else
     fi
     sh "$HERE/notify.sh" "Site calismiyor" \
        "$STILL_HUMAN $OUTAGE once durdu, kalkmiyor.
-Otomatik toparlama denendi, basarisiz. Sunucuya bakman gerek.
-
-https://yedek.opik.online" \
+Otomatik toparlama denendi, basarisiz. Sunucuya bakman gerek." \
        "urgent" "rotating_light" "fail-$STILL_HUMAN"
 fi
