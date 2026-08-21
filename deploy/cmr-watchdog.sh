@@ -59,6 +59,64 @@ for c in $EXPECTED; do
 done
 DEAD_HUMAN=$(echo "$DEAD_HUMAN" | sed 's/, $//')
 
+# --- Bellek esigi uyarisi -------------------------------------------------
+# NEDEN: sisme/sizinti sessizce ilerler; container mem_limit'e dayanip OOM ile
+# olene kadar hicbir sey belli olmaz. %90'da haber ver, olmeden once.
+# Tekrar plani: hemen · +10dk · +20dk · sonra +10sa'de son hatirlatma · sus.
+# Bellek normale donunce durum sifirlanir (yeni bir olayda bastan baslar).
+# ponytail: tek durum dosyasi — ayni anda farkli servislerin dolmasi nadir.
+MEM_STATE=/var/tmp/.cmr-mem-alert
+MEM_THRESHOLD="${CMR_MEM_THRESHOLD:-90}"
+OVER=""
+
+MEM_TOTAL=$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)
+MEM_AVAIL=$(awk '/^MemAvailable:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$MEM_TOTAL" -gt 0 ]; then
+    HOST_PCT=$(( (MEM_TOTAL - MEM_AVAIL) * 100 / MEM_TOTAL ))
+    if [ "$HOST_PCT" -ge "$MEM_THRESHOLD" ]; then
+        OVER="Sunucu bellegi %$HOST_PCT dolu."
+    fi
+fi
+
+# Container yuzdesi kendi mem_limit'ine goredir — asil OOM riski budur.
+CSTATS=$(docker stats --no-stream --format '{{.Name}}|{{.MemPerc}}' 2>/dev/null || true)
+for line in $CSTATS; do
+    cname=${line%%|*}
+    cpct=${line##*|}; cpct=${cpct%\%}; cpct=${cpct%%.*}
+    case " $EXPECTED " in *" $cname "*) ;; *) continue ;; esac
+    case "$cpct" in ''|*[!0-9]*) continue ;; esac
+    if [ "$cpct" -ge "$MEM_THRESHOLD" ]; then
+        OVER="$OVER $(human_name "$cname") bellegin %$cpct'ini kullaniyor."
+    fi
+done
+
+if [ -z "$OVER" ]; then
+    rm -f "$MEM_STATE"
+else
+    COUNT=0; LAST=0
+    if [ -f "$MEM_STATE" ]; then
+        COUNT=$(cut -d' ' -f1 "$MEM_STATE" 2>/dev/null || echo 0)
+        LAST=$(cut -d' ' -f2 "$MEM_STATE" 2>/dev/null || echo 0)
+    fi
+    NOW=$(date +%s); AGE=$(( NOW - LAST )); SEND=0
+    if   [ "$COUNT" -eq 0 ];                              then SEND=1   # ilk uyari
+    elif [ "$COUNT" -lt 3 ] && [ "$AGE" -ge 600 ];        then SEND=1   # +10dk, +20dk
+    elif [ "$COUNT" -eq 3 ] && [ "$AGE" -ge 36000 ];      then SEND=1   # +10 saat, son
+    fi
+    if [ "$SEND" -eq 1 ]; then
+        COUNT=$(( COUNT + 1 ))
+        echo "$COUNT $NOW" > "$MEM_STATE"
+        if [ "$COUNT" -ge 4 ]; then
+            MEM_TAIL="Hala duzelmedi. Son hatirlatma — bundan sonra susacagim."
+        else
+            MEM_TAIL="Dusmezse servis kendini yeniden baslatabilir."
+        fi
+        logger -t cmr-watchdog "bellek uyarisi #$COUNT:$OVER"
+        sh "$HERE/notify.sh" "Bellek doluyor" "$OVER
+$MEM_TAIL" "high" "warning" ""
+    fi
+fi
+
 [ -z "$DEAD" ] && exit 0    # saglikli: sessiz cik
 
 logger -t cmr-watchdog "olu servis bulundu:$DEAD — toparlaniyor"
