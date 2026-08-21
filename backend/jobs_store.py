@@ -269,6 +269,43 @@ class RedisStore:
 _store = None
 
 
+class SafeStore:
+    """Redis'i sarar; calisma aninda Redis olurse KALICI olarak memory'ye gecer.
+
+    NEDEN: fallback eskiden yalnizca ILK baglantida vardi. Sistem ayaktayken
+    Redis dusunce RedisStore kullanilmaya devam ediyor ve her istek 500 veriyordu
+    (battle test 27'de dogrulandi). Simdi ilk Redis hatasinda memory'ye dusup
+    istegi orada tamamliyoruz — uretim kesintiye ugramaz.
+
+    Redis geri geldiginde otomatik donmeyiz (durum zaten memory'de); temiz gecis
+    icin backend yeniden baslamali. Progress verisi kritik olmadigi icin kabul
+    edilebilir bir odun.
+    """
+
+    def __init__(self, redis_store):
+        self._inner = redis_store
+        self._degraded = False
+
+    def _fallback(self, exc):
+        if not self._degraded:
+            print(f"[jobs_store] Redis calisma aninda koptu ({exc}) — memory'ye geciliyor")
+            self._inner = MemoryStore()
+            self._degraded = True
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
+
+        def wrapped(*a, **kw):
+            try:
+                return attr(*a, **kw)
+            except Exception as e:
+                self._fallback(e)
+                return getattr(self._inner, name)(*a, **kw)
+        return wrapped
+
+
 def get_store():
     """Lazy singleton. Fork sonrasi her worker'da ilk cagrida olusur."""
     global _store
@@ -281,7 +318,7 @@ def get_store():
         try:
             rs = RedisStore(url)
             rs._redis.ping()
-            _store = rs
+            _store = SafeStore(rs)
             print(f"[jobs_store] using Redis backend ({url})")
             return _store
         except Exception as e:

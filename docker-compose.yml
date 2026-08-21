@@ -31,6 +31,9 @@ services:
         - NEXT_PUBLIC_API_KEY=${API_KEY}
     container_name: cmr-frontend
     restart: always
+    # Next.js standalone ~50-80 MB kullanir; 768m bol pay birakir ve
+    # bir sizinti olursa host'u degil container'i vurur.
+    mem_limit: 768m
     expose:
       - "3000"
     environment:
@@ -72,8 +75,8 @@ services:
       # NOT: MALLOC_ARENA_MAX=2 denendi — RSS'i dusuruyor ama render'i %70
       # yavaslatiyor (9.5s -> 16.9s, 182 satir). malloc_trim tek basina yeterli.
       - GUNICORN_MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-100}
-    # Bellek tavani: sizinti olursa host'u degil container'i vurur, autoheal
-    # toparlar. Host 4.9 GB; 3 GB tavan sistemi ayakta tutar.
+    # Bellek tavani: sizinti olursa host'u degil container'i vurur; entrypoint
+    # kendini oldurur, restart:always toparlar. Host 4.9 GB.
     mem_limit: 3g
     volumes:
       # bind mount: named volume'den olculebilir sekilde hizli (7.45s -> 5.43s)
@@ -105,15 +108,6 @@ services:
       timeout: 3s
       retries: 5
 
-  autoheal:
-    image: willfarrell/autoheal
-    container_name: cmr-autoheal
-    restart: always
-    environment:
-      - AUTOHEAL_CONTAINER_LABEL=all
-      - AUTOHEAL_INTERVAL=30
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   cmr-net:

@@ -49,8 +49,8 @@ export function LoadBadge() {
           <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
         </span>
         <span className="text-xs text-gray-600">
-          <span className="font-semibold text-gray-900">{active}</span> üretim sürüyor
-          <span className="text-gray-400"> · hız paylaşılıyor</span>
+          <span className="font-semibold text-gray-900">{active}</span> kişi kullanıyor
+          <span className="text-gray-400"> · biraz yavaş olabilir</span>
         </span>
       </div>
     </div>
