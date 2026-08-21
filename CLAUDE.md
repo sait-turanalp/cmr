@@ -99,3 +99,16 @@ Bir kez 40 GB'a çıkmıştı (24.99 GB build cache). `deploy/setup-host.sh` bun
 - Giriş sabit kodlanmış (`admin`/`1234`), `users` tablosu kullanılmıyor
 - Hız sınırlama yok (oturum zorunlu olduğu için istismar yüzeyi dar)
 - `.env` git'te takipli — anahtarlar geçmişte duruyor
+
+### Foot-gun: watchdog ve elle yeniden başlatma aynı anda çalışırsa stack bozulur
+
+`docker compose up -d --force-recreate` sırasında container'lar geçici olarak
+`created`/`missing` görünür. Kilit yoksa `cmr-watchdog` bunu çökme sanıp **ikinci
+bir `compose up`** başlatır; iki compose yarışır ve stack bozulur — ölçüldü:
+`cmr-backend` tamamen kayboldu ve sahte bir "toparlanamadı" acil bildirimi gitti.
+
+Çözüm: her ikisi de `/var/lock/cmr-ops.lock` üzerinde `flock` alır.
+`cmr-watchdog.sh` kilidi alamazsa **o turu sessizce atlar** (`flock -n 9 || exit 0`);
+`cmr-commander.py` yeniden başlatma boyunca kilidi tutar.
+
+**Kural:** `compose` çağıran yeni bir otomasyon eklersen bu kilidi almadan ekleme.

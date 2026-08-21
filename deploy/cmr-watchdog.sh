@@ -10,6 +10,14 @@
 # Her sey ayaktaysa HICBIR SEY yapmaz — bedeli sadece birkac docker inspect.
 set -e
 
+# Ayni anda tek bir "compose" islemi: komut dinleyicisi (telefondaki yeniden
+# baslat butonu) calisirken container'lar gecici olarak "created"/"missing"
+# gorunur. Kilit olmadan watchdog bunu cokme sanip ikinci bir "compose up"
+# baslatiyor — iki compose yarisiyor ve stack bozuluyor (olculdu: cmr-backend
+# tamamen kayboldu + sahte "toparlanamadi" uyarisi gitti).
+exec 9>/var/lock/cmr-ops.lock
+flock -n 9 || exit 0    # baskasi calisiyor: bu turu atla, 60 sn sonra yine bak
+
 APP_DIR="${CMR_DIR:-/opt/cmr}"
 HERE=$(dirname "$0")
 EXPECTED="cmr-caddy cmr-frontend cmr-backend cmr-redis"
@@ -113,7 +121,7 @@ else
         fi
         logger -t cmr-watchdog "bellek uyarisi #$COUNT:$OVER"
         sh "$HERE/notify.sh" "Bellek doluyor" "$OVER
-$MEM_TAIL" "high" "warning" ""
+$MEM_TAIL" "high" "warning" "" "ops"
     fi
 fi
 
@@ -156,5 +164,5 @@ else
     sh "$HERE/notify.sh" "Site calismiyor" \
        "$STILL_HUMAN $OUTAGE once durdu, kalkmiyor.
 Otomatik toparlama denendi, basarisiz. Sunucuya bakman gerek." \
-       "urgent" "rotating_light" "fail-$STILL_HUMAN"
+       "urgent" "rotating_light" "fail-$STILL_HUMAN" "ops"
 fi

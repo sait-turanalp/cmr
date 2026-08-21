@@ -46,7 +46,9 @@ docker image prune -af >/dev/null 2>&1 || true
 if [ -d /run/systemd/system ]; then
   install -m 644 "$HERE/cmr-watchdog.service" /etc/systemd/system/
   install -m 644 "$HERE/cmr-watchdog.timer"   /etc/systemd/system/
+  install -m 644 "$HERE/cmr-commander.service" /etc/systemd/system/
   systemctl daemon-reload
+  systemctl enable --now cmr-commander.service >/dev/null 2>&1 || true
   echo "systemd zamanlayicilari kuruldu"
 fi
 
@@ -55,6 +57,11 @@ ENV_FILE=/opt/cmr/.env
 if [ -f "$ENV_FILE" ] && ! grep -q '^NTFY_TOPIC=' "$ENV_FILE"; then
   echo "NTFY_TOPIC=cmr-ops-$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$ENV_FILE"
   echo "bildirim konusu uretildi: $(grep '^NTFY_TOPIC=' "$ENV_FILE")"
+fi
+# Komut konusu AYRI olmali: uyari konusu sizarsa sunucu yeniden baslatilamasin.
+if [ -f "$ENV_FILE" ] && ! grep -q '^NTFY_CMD_TOPIC=' "$ENV_FILE"; then
+  echo "NTFY_CMD_TOPIC=cmr-cmd-$(head -c12 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> "$ENV_FILE"
+  echo "komut konusu uretildi (gizli tut)"
 fi
 
 echo "tamam. disk:"

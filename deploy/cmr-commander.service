@@ -1,0 +1,14 @@
+[Unit]
+Description=CMR ntfy command listener (restart/reboot from phone)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/cmr/deploy/cmr-commander.py
+Restart=always
+RestartSec=5
+# Docker'in disinda calisir: site tamamen olu olsa bile buton calisir.
+
+[Install]
+WantedBy=multi-user.target
