@@ -46,10 +46,7 @@ docker image prune -af >/dev/null 2>&1 || true
 if [ -d /run/systemd/system ]; then
   install -m 644 "$HERE/cmr-watchdog.service" /etc/systemd/system/
   install -m 644 "$HERE/cmr-watchdog.timer"   /etc/systemd/system/
-  install -m 644 "$HERE/cmr-report.service"   /etc/systemd/system/
-  install -m 644 "$HERE/cmr-report.timer"     /etc/systemd/system/
   systemctl daemon-reload
-  systemctl enable --now cmr-watchdog.timer cmr-report.timer >/dev/null 2>&1 || true
   echo "systemd zamanlayicilari kuruldu"
 fi
 

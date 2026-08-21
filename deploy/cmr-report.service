@@ -1,9 +1,0 @@
-[Unit]
-Description=CMR haftalik saglik ozeti
-After=docker.service
-
-[Service]
-Type=oneshot
-WorkingDirectory=/opt/cmr
-ExecStart=/bin/sh /opt/cmr/deploy/cmr-report.sh
-TimeoutStartSec=120
