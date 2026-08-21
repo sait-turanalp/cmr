@@ -47,7 +47,18 @@ function isBlockedRequest(req: Request): boolean {
 
 export async function middleware(req: Request) {
   const pathname = new URL(req.url).pathname;
-  const unprotectedRoutes = ["/api/auth", "/api/proxy"];
+  // Yalnizca salt-okunur yoklama uclari korumasiz kalir; bunlar saniyede ~2 kez
+  // cagriliyor ve sadece sayac bilgisi donuyor, o yuzden getToken() maliyetini
+  // buraya eklemiyoruz (uretim hizi etkilenmesin).
+  // KORUNANLAR: /api/proxy/process-pdf (CPU tuketir) ve /api/proxy/download
+  // (uretilen dosya). Oncesinde tum /api/proxy acikti — giris yapmamis herkes
+  // PDF urettirip sunucuyu mesgul edebiliyordu.
+  const unprotectedRoutes = [
+    "/api/auth",
+    "/api/proxy/progress",
+    "/api/proxy/active",
+    "/api/proxy/isfree",
+  ];
 
   // Unprotected route'lar JWT decrypt'e girmez — progress polling saniyede 2
   // istek atiyor, her birinde JWE decrypt gereksiz maliyet.
@@ -67,6 +78,14 @@ export async function middleware(req: Request) {
   }
 
   if (!token) {
+    // API cagrilarinda yonlendirme yerine 401: istemci JSON bekliyor, HTML
+    // gelirse parse hatasi aliyor. Sayfa isteklerinde yonlendirme dogru.
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
     return NextResponse.redirect(new URL("/", req.url));
   }
 

@@ -97,6 +97,38 @@ Dayanıklılık: bir iş yarıda kesilse diğerleri etkilenmiyor ve sayaç topar
 kapasite aşımında beklenmedik hata değil düzgün 503 dönüyor; stres sonrası tek iş
 normal hızına (12 sn, 3 işçi) dönüyor.
 
+## Dayanıklılık katmanları
+
+Üç bağımsız katman; biri çalışmazsa diğeri devreye girer:
+
+1. **Süreç seviyesi** — her container kendi sağlığını 30 sn'de bir yoklar
+   (`backend/entrypoint.sh`, `frontend/entrypoint.sh`). 5 ardışık başarısızlıkta
+   `exit 1` → Docker `restart: always` kaldırır. Donmuş (SIGSTOP) süreç de
+   yakalanır; ölçüldü: 165 sn'de kendini öldürüp 1 sn'de geri geldi.
+2. **Docker seviyesi** — `restart: always` + healthcheck.
+3. **Host seviyesi** — `cmr-watchdog.timer` dakikada bir ölü/eksik container
+   arar. Docker'ın restart politikası container API'den durdurulmuşsa
+   (`docker stop`/`kill`, başarısız `docker restart`) **kasten devreye girmez**;
+   19 Ağustos'taki 17 saatlik kesinti tam buydu. Watchdog o boşluğu kapatır —
+   ölçüldü: elle durdurulan backend **33 sn**'de geri geldi.
+
+Bildirim: `deploy/notify.sh` (ntfy.sh). Watchdog toparlama yaptığında ve
+haftalık özet zamanında (`cmr-report.timer`) mesaj gider. Konu adı `.env`
+içindeki `NTFY_TOPIC` — gizli tutulmalı, bilen okuyabilir.
+
+## Kimlik doğrulama
+
+`frontend/src/middleware.ts` iki sınıf ayırır:
+
+- **Korumasız**: `/api/auth`, `/api/proxy/progress`, `/api/proxy/active`,
+  `/api/proxy/isfree` — yalnızca salt-okunur sayaçlar. Saniyede ~2 kez
+  çağrıldıkları için `getToken()` maliyeti bilinçli olarak eklenmez.
+- **Korumalı**: `/api/proxy/process-pdf`, `/api/proxy/download`, tüm sayfalar.
+  Çerezsiz istek API yollarında **401 JSON**, sayfa yollarında girişe yönlendirme alır.
+
+API anahtarı yalnızca sunucuda: proxy route'ları backend'e kendi
+`API_KEY`'ini ekler, istemci paketinde anahtar **bulunmaz** (doğrulandı).
+
 ## Değişmezler
 
 - **Üretilen PDF diskte kalmaz.** İndirme tamamlanınca `after_this_request` ile silinir; indirilmeyenleri `cleanup_pdfs` `PDF_MAX_AGE_HOURS` sonra süpürür.
@@ -139,7 +171,8 @@ Normal modda aynı dosya ~123 sn (kasıtlı yavaşlatma).
 
 ## Bilinen zayıflıklar
 
-- `NEXT_PUBLIC_API_KEY` istemci paketine gömülür — API anahtarı tarayıcıdan okunabilir.
 - Giriş sabit kodlanmış (`admin`/`1234`); `users` tablosu kullanılmıyor.
-- Hız sınırlama yok.
-- Yedekleme ve uyarı mekanizması yok (autoheal restart eder ama kimseye haber vermez).
+- Hız sınırlama yok — oturum zorunluluğu geldiği için istismar yüzeyi daraldı,
+  ama giriş yapmış bir kullanıcı sınırsız iş açabilir (kapasite tavanı 8 iş).
+- Yedekleme yok. Kalıcı veri de yok (üretilen PDF indirilince silinir,
+  Redis persistence kapalı), dolayısıyla kayıp riski düşük.

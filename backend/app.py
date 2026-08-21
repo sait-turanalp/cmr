@@ -377,6 +377,10 @@ def api_process_pdf():
         if not isinstance(body_data, list):
             return jsonify({'error': 'Expected an array of items.'}), 400
 
+        # Bos liste: PyMuPDF 'cannot save with zero pages' ile 500 sizdiriyordu.
+        if len(body_data) == 0:
+            return jsonify({'error': 'Dosyada islenecek satir bulunamadi.'}), 400
+
         # Kabul kontrolu — job yaratmadan ONCE. Tavani asarsak acikca reddet.
         if store.active_count() >= MAX_CONCURRENT_JOBS:
             return jsonify({

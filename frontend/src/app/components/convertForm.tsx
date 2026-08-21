@@ -10,7 +10,6 @@ import ExcelJS from 'exceljs'
 import { Progress } from '@/components/ui/progress'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY
 
 export function ConvertForm() {
   const [file, setFile] = useState<File | null>(null)
@@ -66,9 +65,6 @@ export function ConvertForm() {
     try {
       const response = await fetch('/api/proxy/progress', {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-        },
       })
       if (!response.ok) return null
       const data = await response.json()
@@ -130,7 +126,6 @@ export function ConvertForm() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
         },
         body: JSON.stringify({ data: jsonData, currency: currency, mode: turboMode ? 'turbo' : 'normal' }),
       })

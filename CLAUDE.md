@@ -35,6 +35,9 @@ Rollback: `/opt/cmr/_rollback/` altında container config yedekleri, `cmr-*:roll
 | PDF silinme davranışı | üret → indir → `ls /opt/cmr/backend/outputs` boş olmalı |
 | Disk | `df -h /` ve `docker system df` |
 | Anlık yük | `curl -s https://yedek.opik.online/api/proxy/active` |
+| Zamanlayıcılar | `systemctl list-timers 'cmr-*'` |
+| Watchdog günlüğü | `journalctl -t cmr-watchdog --since '1 day ago'` |
+| Bildirim testi | `sh /opt/cmr/deploy/notify.sh 'test' 'deneme'` |
 | Eşzamanlılık | `scratchpad/load_test.py all` (1-4 kullanıcı) · `resilience_test.py` (kesme/kapasite) |
 
 Performans referansı: 182 satır turbo ≈ 9-10 sn (render ~7, save ~2.5).
@@ -63,6 +66,16 @@ Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
 - 4 çekirdekte `PARALLEL_WORKERS=3` optimum. 4 yapınca ana süreçteki birleştirme işi (`insert_pdf`) çekirdek için yarışıyor, %7 yavaşlıyor.
 - Küçük dosyalarda havuz açmak zararlı — fork maliyeti render'dan uzun. Eşik `PARALLEL_MIN_ROWS=40`.
 
+**Kimlik doğrulama**
+- `middleware.ts`'te korumalı API'ye çerezsiz gelince **401 JSON** dönmeli, yönlendirme değil — istemci JSON bekliyor, HTML gelirse parse hatası alır.
+- Kötü tarayıcı ajanı filtresi yalnızca **oturumsuz** isteklerde çalışır (`!token && isBlockedRequest`). Oturumlu test yaparsan engellenmediğini görürsün, bu normaldir.
+- Tarayıcıda `fetch()` varsayılan `credentials: 'same-origin'` — çerez otomatik gider, `<a href download>` de öyle. Koruma eklerken istemciye dokunmak gerekmedi.
+
+**Dayanıklılık**
+- Docker'ın `restart: always` politikası, container API'den durdurulmuşsa (`docker stop`/`kill`, başarısız `docker restart`) **devreye girmez** — `RestartCount` 0'da kalır. 17 saatlik kesintinin mekanizması buydu. `cmr-watchdog.timer` bu boşluğu kapatır (ölçüldü: 33 sn).
+- Kaos testinde `docker kill` kullanma — o manuel müdahale sayılır ve gerçek çökmeyi temsil etmez. Gerçek çökme testi: `docker exec <c> pkill -9 -f <süreç>`.
+- Frontend'de Node süreci `server.js` değil **`next-server`** adıyla görünür; `pkill -f server.js` hiçbir şey yakalamaz.
+
 **Next.js**
 - `localStorage`'ı `useState` başlangıç değerinde okumak hydration mismatch yaratır (sunucu `false`, istemci `true` üretir; React stil'i düzeltmez, öğe yanlış renkte kalır). `useEffect` içinde oku.
 - `NEXT_PUBLIC_*` istemci paketine gömülür. Sır koyma.
@@ -83,8 +96,6 @@ Bir kez 40 GB'a çıkmıştı (24.99 GB build cache). `deploy/setup-host.sh` bun
 
 ## Kalan işler
 
-- `NEXT_PUBLIC_API_KEY` istemcide açık — API anahtarı tarayıcıdan okunabiliyor
 - Giriş sabit kodlanmış (`admin`/`1234`), `users` tablosu kullanılmıyor
-- Hız sınırlama yok
-- Yedekleme ve uyarı yok
+- Hız sınırlama yok (oturum zorunlu olduğu için istismar yüzeyi dar)
 - `.env` git'te takipli — anahtarlar geçmişte duruyor

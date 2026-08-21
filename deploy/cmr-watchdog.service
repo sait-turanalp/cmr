@@ -1,0 +1,11 @@
+[Unit]
+Description=CMR olu servis toparlayici
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cmr
+ExecStart=/bin/sh /opt/cmr/deploy/cmr-watchdog.sh
+# Docker daemon yeni acilmissa inspect hata verebilir; kisa bekleme yeter
+TimeoutStartSec=180
