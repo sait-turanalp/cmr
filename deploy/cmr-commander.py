@@ -91,13 +91,13 @@ def dead_services():
 
 
 def do_restart():
-    notify("Yeniden baslatiliyor", "Butona bastin. Uygulama yeniden basliyor,\n"
-                                   "yaklasik 1 dakika surer.", "default", "arrows_counterclockwise")
+    notify("Yeniden başlatılıyor", "Butona bastın. Uygulama yeniden başlıyor,\n"
+                                     "yaklaşık 1 dakika sürer.", "default", "arrows_counterclockwise")
     if not ensure_docker():
         notify("Docker bozuk",
-               "Yeniden baslatma yapilamadi: Docker servisi yanit vermiyor\n"
-               "ve kendi kendine de kalkmadi.\n\n"
-               "Sunucuyu resetle butonuna bas — bu durumu genelde cozer.",
+               "Yeniden başlatma yapılamadı: Docker servisi yanıt vermiyor\n"
+               "ve kendi kendine de kalkmadı.\n\n"
+               "Sunucuyu resetle butonuna bas — bu durumu genelde çözer.",
                "urgent", "rotating_light", ops=True)
         return
 
@@ -118,18 +118,18 @@ def do_restart():
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
     if r.returncode == 0 and not dead:
-        notify("Yeniden baslatildi", "Dort servis de ayakta, site calisiyor.",
+        notify("Yeniden başlatıldı", "Dört servis de ayakta, site çalışıyor.",
                "default", "white_check_mark")
     else:
-        notify("Yeniden baslatma basarisiz",
-               "Komut calisti ama servisler ayaga kalkmadi.\n"
+        notify("Yeniden başlatma başarısız",
+               "Komut çalıştı ama servisler ayağa kalkmadı.\n"
                "Sunucuyu resetle butonunu dene.", "urgent", "rotating_light", ops=True)
 
 
 def do_reboot():
     # Bildirimi ONCE yolla — reboot'tan sonra sansimiz yok.
-    notify("Sunucu resetleniyor", "Butona bastin. Sunucu yeniden basliyor,\n"
-                                  "site 1-2 dakika icinde geri gelir.", "default", "arrows_counterclockwise")
+    notify("Sunucu resetleniyor", "Butona bastın. Sunucu yeniden başlıyor,\n"
+                                  "site 1-2 dakika içinde geri gelir.", "default", "arrows_counterclockwise")
     time.sleep(2)
     subprocess.run(["systemctl", "reboot"], check=False)
 
@@ -170,8 +170,8 @@ def main():
                     if now - last_action < COOLDOWN:
                         # Sessizce yutma: butona basan biri sonuc bekler.
                         log("soguma suresi — komut yoksayildi: %s" % cmd)
-                        notify("Zaten yeniden basliyor",
-                               "Az once bir yeniden baslatma basladi.\n"
+                        notify("Zaten yeniden başlıyor",
+                               "Az önce bir yeniden başlatma başladı.\n"
                                "Bitmesini bekle, gerekirse tekrar bas.",
                                "low", "hourglass")
                         continue

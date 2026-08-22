@@ -27,9 +27,9 @@ EXPECTED="cmr-caddy cmr-frontend cmr-backend cmr-redis"
 human_name() {
     case "$1" in
         cmr-backend)  echo "PDF servisi" ;;
-        cmr-frontend) echo "Web arayuzu" ;;
-        cmr-caddy)    echo "Site erisimi" ;;
-        cmr-redis)    echo "Is takibi" ;;
+        cmr-frontend) echo "Web arayüzü" ;;
+        cmr-caddy)    echo "Site erişimi" ;;
+        cmr-redis)    echo "İş takibi" ;;
         *)            echo "$1" ;;
     esac
 }
@@ -82,7 +82,7 @@ MEM_AVAIL=$(awk '/^MemAvailable:/{print $2; exit}' /proc/meminfo 2>/dev/null || 
 if [ "$MEM_TOTAL" -gt 0 ]; then
     HOST_PCT=$(( (MEM_TOTAL - MEM_AVAIL) * 100 / MEM_TOTAL ))
     if [ "$HOST_PCT" -ge "$MEM_THRESHOLD" ]; then
-        OVER="Sunucu bellegi %$HOST_PCT dolu."
+        OVER="Sunucu belleği %$HOST_PCT dolu."
     fi
 fi
 
@@ -94,7 +94,7 @@ for line in $CSTATS; do
     case " $EXPECTED " in *" $cname "*) ;; *) continue ;; esac
     case "$cpct" in ''|*[!0-9]*) continue ;; esac
     if [ "$cpct" -ge "$MEM_THRESHOLD" ]; then
-        OVER="$OVER $(human_name "$cname") bellegin %$cpct'ini kullaniyor."
+        OVER="$OVER $(human_name "$cname") belleği %$cpct dolu."
     fi
 done
 
@@ -115,9 +115,9 @@ else
         COUNT=$(( COUNT + 1 ))
         echo "$COUNT $NOW" > "$MEM_STATE"
         if [ "$COUNT" -ge 4 ]; then
-            MEM_TAIL="Hala duzelmedi. Son hatirlatma — bundan sonra susacagim."
+            MEM_TAIL="Hâlâ düzelmedi. Son hatırlatma — bundan sonra susacağım."
         else
-            MEM_TAIL="Dusmezse servis kendini yeniden baslatabilir."
+            MEM_TAIL="Düşmezse servis kendini yeniden başlatabilir."
         fi
         logger -t cmr-watchdog "bellek uyarisi #$COUNT:$OVER"
         sh "$HERE/notify.sh" "Bellek doluyor" "$OVER
@@ -150,9 +150,9 @@ if [ -z "$STILL" ]; then
         OUTAGE="kisa bir sure"
     fi
     logger -t cmr-watchdog "kesinti suresi: $OUTAGE"
-    sh "$HERE/notify.sh" "Sistem kendini onardi" \
+    sh "$HERE/notify.sh" "Sistem kendini onardı" \
        "$DEAD_HUMAN $OUTAGE durdu, geri geldi.
-Bir sey yapmana gerek yok." \
+Bir şey yapmana gerek yok." \
        "default" "white_check_mark" "ok-$DEAD_HUMAN"
 else
     logger -t cmr-watchdog "TOPARLANAMADI:$STILL"
@@ -161,8 +161,8 @@ else
     else
         OUTAGE="bilinmiyor"
     fi
-    sh "$HERE/notify.sh" "Site calismiyor" \
-       "$STILL_HUMAN $OUTAGE once durdu, kalkmiyor.
-Otomatik toparlama denendi, basarisiz. Sunucuya bakman gerek." \
+    sh "$HERE/notify.sh" "Site çalışmıyor" \
+       "$STILL_HUMAN $OUTAGE önce durdu, kalkmıyor.
+Otomatik toparlama denendi, başarısız. Sunucuya bakman gerek." \
        "urgent" "rotating_light" "fail-$STILL_HUMAN" "ops"
 fi

@@ -13,6 +13,9 @@
 # - 'Click' basligi KULLANILMAZ: boylece bildirime dokununca ntfy uygulamasi
 #   mesaj detayini acar (butonlar ve tam metin orada gorunur). Siteye gitmek
 #   isteyen icin ayri bir buton var.
+# - Baslik ve buton etiketleri RFC 2047 (base64) ile kodlanir: HTTP basliklari
+#   ham UTF-8'i guvenilir tasimaz, kodlamadan Turkce karakterler "?" olur.
+#   Govde (-d) zaten ham UTF-8 gonderilebilir.
 # - Markdown KULLANILMAZ: ntfy dokumanina gore markdown "web app only for now"
 #   — iOS/Android uygulamasinda **kalin** isaretleri ham gorunur. Onun yerine
 #   ciplak URL yaziyoruz; mobil uygulama onlari otomatik tiklanabilir yapar.
@@ -41,21 +44,27 @@ if [ -n "$MUTE_KEY" ]; then
     touch "$STAMP"
 fi
 
-# Butonlar: en fazla 3. Sorun bildiriminde ucu de dolar.
+# HTTP basliklarinda Turkce icin RFC 2047 base64.
+enc() { printf '=?UTF-8?B?%s?=' "$(printf '%s' "$1" | base64 -w0)"; }
+
+# Butonlar: en fazla 3, ama UCU BIRDEN dar kaliyor — orta etiket iki satira
+# kiriliyor ve cirkin duruyor (telefonda goruldu). Sorun mesajinda "Siteyi ac"
+# zaten en ise yaramaz buton (site bozuk), o yuzden orada iki butonla kaliyoruz.
 # Komut butonlari AYRI bir gizli konuya yayin yapar (uyari konusu degil) ve
 # "Cache: no" ile — komut ntfy'de saklanmaz, sonradan tekrar oynatilamaz.
-ACTIONS="view, Siteyi ac, $SITE, clear=true"
 if [ "$OPS" = "ops" ] && [ -n "$NTFY_CMD_TOPIC" ]; then
     CMD_URL="https://ntfy.sh/$NTFY_CMD_TOPIC"
-    ACTIONS="$ACTIONS; http, Yeniden baslat, $CMD_URL, body=restart, headers.Cache=no, clear=true"
+    ACTIONS="http, Yeniden başlat, $CMD_URL, body=restart, headers.Cache=no, clear=true"
     ACTIONS="$ACTIONS; http, Sunucuyu resetle, $CMD_URL, body=reboot, headers.Cache=no, clear=true"
+else
+    ACTIONS="view, Siteyi aç, $SITE, clear=true"
 fi
 
 curl -fsS --max-time 8 \
-     -H "Title: $TITLE" \
+     -H "Title: $(enc "$TITLE")" \
      -H "Priority: $PRIO" \
      ${TAGS:+-H "Tags: $TAGS"} \
-     -H "Actions: $ACTIONS" \
+     -H "Actions: $(enc "$ACTIONS")" \
      -d "$BODY" \
      "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
 exit 0
