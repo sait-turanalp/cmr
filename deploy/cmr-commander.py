@@ -40,16 +40,44 @@ def env(key):
     return ""
 
 
-def notify(title, body, prio="default", tag=""):
+def notify(title, body, prio="default", tag="", ops=False):
+    """ops=True: mesaja 'Yeniden baslat' + 'Sunucuyu resetle' butonlari eklenir."""
     try:
-        subprocess.run(["sh", NOTIFY, title, body, prio, tag, "", ""],
-                       timeout=20, check=False)
+        subprocess.run(["sh", NOTIFY, title, body, prio, tag, "",
+                        "ops" if ops else ""], timeout=20, check=False)
     except Exception:
         pass
 
 
 def log(msg):
     print(msg, flush=True)
+
+
+def docker_alive():
+    try:
+        p = subprocess.run(["docker", "info"], capture_output=True, timeout=30)
+        return p.returncode == 0
+    except Exception:
+        return False
+
+
+def ensure_docker():
+    """Docker daemon olu ise once onu ayaga kaldirmayi dene.
+
+    Compose komutu daemon olmadan hicbir sey yapamaz; bu durumda kullaniciya
+    'yeniden baslatma basarisiz' demek yetersiz — ne yapmasi gerektigini
+    soylemek gerek (Sunucuyu resetle butonu mesajin uzerinde).
+    """
+    if docker_alive():
+        return True
+    log("docker daemon yanit vermiyor — daemon yeniden baslatiliyor")
+    subprocess.run(["systemctl", "restart", "docker"], capture_output=True, check=False)
+    for _ in range(15):
+        time.sleep(2)
+        if docker_alive():
+            log("docker daemon geri geldi")
+            return True
+    return False
 
 
 def dead_services():
@@ -65,6 +93,14 @@ def dead_services():
 def do_restart():
     notify("Yeniden baslatiliyor", "Butona bastin. Uygulama yeniden basliyor,\n"
                                    "yaklasik 1 dakika surer.", "default", "arrows_counterclockwise")
+    if not ensure_docker():
+        notify("Docker bozuk",
+               "Yeniden baslatma yapilamadi: Docker servisi yanit vermiyor\n"
+               "ve kendi kendine de kalkmadi.\n\n"
+               "Sunucuyu resetle butonuna bas — bu durumu genelde cozer.",
+               "urgent", "rotating_light", ops=True)
+        return
+
     # Kilit: watchdog ayni anda ikinci bir "compose up" baslatmasin.
     lock = open(LOCK_FILE, "w")
     fcntl.flock(lock, fcntl.LOCK_EX)
@@ -87,7 +123,7 @@ def do_restart():
     else:
         notify("Yeniden baslatma basarisiz",
                "Komut calisti ama servisler ayaga kalkmadi.\n"
-               "Sunucuya baglanip bakman gerek.", "urgent", "rotating_light")
+               "Sunucuyu resetle butonunu dene.", "urgent", "rotating_light", ops=True)
 
 
 def do_reboot():
