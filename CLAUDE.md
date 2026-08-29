@@ -9,6 +9,9 @@ XLSX → toplu CMR PDF üreten servis. Mimari için `ARCHITECTURE.md` (gerektiğ
 - `frontend/src/app/components/resultPage.tsx` — sonuç ekranı
 - `docker-compose.yml` — tek ve gerçek deploy tanımı
 - `deploy/setup-host.sh` — yeni sunucuya taşırken bir kez
+- `deploy/cmr-watchdog.sh` — ölü container toparlayıcı + bellek eşiği uyarısı
+- `deploy/cmr-commander.py` — telefondaki yeniden başlat/resetle butonlarını dinler
+- `deploy/notify.sh` — ntfy bildirimi (buton/etiket/susturma burada)
 
 Sunucu: `root@178.208.187.74`, uygulama `/opt/cmr`, alan adı `yedek.opik.online`.
 
@@ -38,7 +41,15 @@ Rollback: `/opt/cmr/_rollback/` altında container config yedekleri, `cmr-*:roll
 | Zamanlayıcılar | `systemctl list-timers 'cmr-*'` |
 | Watchdog günlüğü | `journalctl -t cmr-watchdog --since '1 day ago'` |
 | Bildirim testi | `sh /opt/cmr/deploy/notify.sh 'test' 'deneme'` |
+| Bellek uyarısı | `rm -f /var/tmp/.cmr-mem-alert; CMR_MEM_THRESHOLD=1 sh …/cmr-watchdog.sh` (sonra damgayı sil) |
+| Uzaktan buton | `curl -H 'Cache: no' -d restart "https://ntfy.sh/$NTFY_CMD_TOPIC"` → `journalctl -u cmr-commander` |
+| Komut dinleyicisi | `systemctl is-active cmr-commander` |
+| Giden bildirimleri oku | `curl -s "https://ntfy.sh/$NTFY_TOPIC/json?poll=1&since=15m"` |
 | Eşzamanlılık | `scratchpad/load_test.py all` (1-4 kullanıcı) · `resilience_test.py` (kesme/kapasite) |
+
+Watchdog'u test ederken **timer'ı bekleme** — script'i doğrudan çağır
+(`sh /opt/cmr/deploy/cmr-watchdog.sh`); dakikalık timer'ı beklemek her turda
+60 sn'ye kadar boşuna bekleme demektir.
 
 Performans referansı: 182 satır turbo ≈ 9-10 sn (render ~7, save ~2.5).
 Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
