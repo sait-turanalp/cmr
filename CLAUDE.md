@@ -12,6 +12,13 @@ XLSX → toplu CMR PDF üreten servis. Mimari için `ARCHITECTURE.md` (gerektiğ
 - `deploy/cmr-watchdog.sh` — ölü container toparlayıcı + bellek eşiği uyarısı
 - `deploy/cmr-commander.py` — telefondaki yeniden başlat/resetle butonlarını dinler
 - `deploy/notify.sh` — ntfy bildirimi (buton/etiket/susturma burada)
+- `Caddyfile` — TLS + yönlendirme; `/ext` entegrasyon kapısı burada
+
+Belgeler:
+
+- `ARCHITECTURE.md` — sistemin şekli: servisler, dayanıklılık katmanları, auth, değişmezler
+- `docs/ENTEGRASYON.md` — `/ext` sözleşmesi: uçlar, hata kodları, tavanlar, token yönetimi
+- `INSTALL.md` — sıfırdan sunucu kurulumu
 
 Sunucu: `root@178.208.187.74`, uygulama `/opt/cmr`, alan adı `yedek.opik.online`.
 
