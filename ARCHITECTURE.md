@@ -170,7 +170,8 @@ bugüne kadar yalnızca dışarı kapalı oldukları için güvendeydiler:
 Uçlar: `POST /ext/process-pdf` · `GET /ext/api/progress` · `GET /ext/api/isfree` ·
 `GET /ext/api/active` · `GET /ext/api/download/<dosya>`.
 Hız sınırı yok — `MAX_CONCURRENT_JOBS` (503) ve `MAX_ROWS_PER_REQUEST` (413)
-zaten tavan.
+zaten tavan. Tam sözleşme, hata kodları ve token yönetimi:
+[`docs/ENTEGRASYON.md`](docs/ENTEGRASYON.md).
 
 ## Değişmezler
 

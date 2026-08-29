@@ -97,6 +97,13 @@ Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
 - Backend `mode=normal`'da satır başına 0.55 sn **kasıtlı** bekler (turbo'yu pazarlanabilir kılmak için). Yavaşlık sanma.
 - Lokal M2, sunucudan ~6 kat hızlı. 182 sayfa lokalde 1.6 sn, sunucuda ~9.5 sn. Karşılaştırırken aynı makineyi kullan.
 
+## Foot-gun: `.env` değişince Caddy **restart değil, recreate** ister
+
+`EXT_TOKEN` / `API_KEY` gibi değerler container oluşturulurken okunur.
+`docker restart cmr-caddy` eski değerle çalışmaya devam eder — doğrusu
+`flock /var/lock/cmr-ops.lock docker compose up -d caddy`.
+(Aynı tuzak backend'de de var: `PARALLEL_MIN_ROWS` bir ara sessizce 9999'da kalmıştı.)
+
 ## Foot-gun: `Caddyfile` uzun süre yalnızca sunucuda vardı
 
 `docker-compose.yml` `./Caddyfile`'ı mount ediyor ama dosya repoda yoktu —
