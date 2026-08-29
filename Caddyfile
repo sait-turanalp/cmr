@@ -1,0 +1,30 @@
+{
+    email {$CMR_EMAIL}
+}
+
+{$CMR_DOMAIN} {
+    encode gzip
+
+    # Sunucudan sunucuya entegrasyon kapisi (ic panel).
+    #
+    # NEDEN KAPIDA DOGRULAMA: backend'de /api/download, /api/active ve /health
+    # bilerek auth'suzdur — bugune kadar guvenli olmalarinin tek sebebi disari
+    # kapali olmalariydi. Duz bir reverse_proxy bunlari internete acardi
+    # (ozellikle indirme ucunu). Bu yuzden token kapida zorunlu.
+    #
+    # NEDEN AYRI TOKEN: panel API_KEY'i hic gormez. Kapi kendi tokenini
+    # dogrular, backend'e giderken API_KEY'i kendisi ekler. Boylece paneli
+    # kesmek tek satir (EXT_TOKEN sil) ve yedek.opik.online etkilenmez.
+    handle_path /ext/* {
+        @yetkisiz not header Authorization "Bearer {$EXT_TOKEN}"
+        respond @yetkisiz 401
+
+        reverse_proxy cmr-backend:5001 {
+            header_up Authorization "Bearer {$API_KEY}"
+        }
+    }
+
+    handle {
+        reverse_proxy cmr-frontend:3000
+    }
+}

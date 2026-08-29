@@ -13,6 +13,9 @@ services:
     environment:
       - CMR_DOMAIN=${CMR_DOMAIN}
       - CMR_EMAIL=${CMR_EMAIL}
+      # /ext kapisi: Caddy tokeni dogrular, backend'e API_KEY'i kendisi ekler.
+      - API_KEY=${API_KEY}
+      - EXT_TOKEN=${EXT_TOKEN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

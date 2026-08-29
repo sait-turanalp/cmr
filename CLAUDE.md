@@ -44,6 +44,8 @@ Rollback: `/opt/cmr/_rollback/` altında container config yedekleri, `cmr-*:roll
 | Bellek uyarısı | `rm -f /var/tmp/.cmr-mem-alert; CMR_MEM_THRESHOLD=1 sh …/cmr-watchdog.sh` (sonra damgayı sil) |
 | Uzaktan buton | `curl -H 'Cache: no' -d restart "https://ntfy.sh/$NTFY_CMD_TOPIC"` → `journalctl -u cmr-commander` |
 | Komut dinleyicisi | `systemctl is-active cmr-commander` |
+| `/ext` kapısı kapalı | `curl -s -o /dev/null -w '%{http_code}' …/ext/api/isfree` → **401** |
+| `/ext` kapısı açık | aynısı `-H "Authorization: Bearer $EXT_TOKEN"` ile → **200** |
 | Giden bildirimleri oku | `curl -s "https://ntfy.sh/$NTFY_TOPIC/json?poll=1&since=15m"` |
 | Eşzamanlılık | `scratchpad/load_test.py all` (1-4 kullanıcı) · `resilience_test.py` (kesme/kapasite) |
 
@@ -94,6 +96,15 @@ Bunun iki katına çıktıysa altyapı sorunudur, kod değil.
 **Ölçüm**
 - Backend `mode=normal`'da satır başına 0.55 sn **kasıtlı** bekler (turbo'yu pazarlanabilir kılmak için). Yavaşlık sanma.
 - Lokal M2, sunucudan ~6 kat hızlı. 182 sayfa lokalde 1.6 sn, sunucuda ~9.5 sn. Karşılaştırırken aynı makineyi kullan.
+
+## Foot-gun: `Caddyfile` uzun süre yalnızca sunucuda vardı
+
+`docker-compose.yml` `./Caddyfile`'ı mount ediyor ama dosya repoda yoktu —
+temiz bir klonla deploy denenirse Caddy açılmazdı. Artık repoda. **Kural:**
+compose'un mount ettiği her dosya repoda bulunmalı.
+
+Bir de: `.env`'de artık kimsenin okumadığı `NEXT_PUBLIC_API_KEY` satırı duruyor
+(tarayıcıdan kaldırıldı). Zararsız, ama silinebilir.
 
 ## Disk hijyeni
 

@@ -153,6 +153,25 @@ tanınmayan komut yoksayılır.
 API anahtarı yalnızca sunucuda: proxy route'ları backend'e kendi
 `API_KEY`'ini ekler, istemci paketinde anahtar **bulunmaz** (doğrulandı).
 
+### `/ext` — sunucudan sunucuya entegrasyon kapısı
+
+Dış sistemler (iç yönetim paneli) tarayıcı değildir, çerez taşıyamaz. Onlar için
+Caddy'de ayrı bir kapı var: `/ext/*` → `cmr-backend:5001`, önek soyulur.
+
+Kapı **kendi token'ını** (`EXT_TOKEN`) doğrular ve backend'e giderken `API_KEY`'i
+kendisi ekler. İki sonucu var: dış taraf `API_KEY`'i hiç görmez, ve `EXT_TOKEN`
+silinince yalnız o entegrasyon durur — `yedek.opik.online` etkilenmez.
+
+Token'ı kapıda zorunlu tutmak şart, çünkü backend'de üç uç bilerek auth'suzdur ve
+bugüne kadar yalnızca dışarı kapalı oldukları için güvendeydiler:
+`/api/download/<dosya>` (koruması yalnızca tahmin edilmesi zor dosya adı),
+`/api/active` ve `/health`. Düz bir `reverse_proxy` bunları internete açardı.
+
+Uçlar: `POST /ext/process-pdf` · `GET /ext/api/progress` · `GET /ext/api/isfree` ·
+`GET /ext/api/active` · `GET /ext/api/download/<dosya>`.
+Hız sınırı yok — `MAX_CONCURRENT_JOBS` (503) ve `MAX_ROWS_PER_REQUEST` (413)
+zaten tavan.
+
 ## Değişmezler
 
 - **Üretilen PDF diskte kalmaz.** İndirme tamamlanınca `after_this_request` ile silinir; indirilmeyenleri `cleanup_pdfs` `PDF_MAX_AGE_HOURS` sonra süpürür.
@@ -174,6 +193,7 @@ Tümü `/opt/cmr/.env` (yalnız sunucuda; repo'da yoktur) — compose bunu okur.
 | `API_KEY` | Backend Bearer anahtarı |
 | `NTFY_TOPIC` | Bildirim konusu — **gizli**, bilen uyarıları okur |
 | `NTFY_CMD_TOPIC` | Komut konusu — **gizli**, bilen sunucuyu yeniden başlatır |
+| `EXT_TOKEN` | `/ext` kapısının token'ı — **gizli**, dış entegrasyona verilir |
 | `PARALLEL_WORKERS` | Turbo'da fork sayısı — 4 çekirdekte **3** optimal |
 | `PARALLEL_MIN_ROWS` | Bu satırdan azsa havuz açılmaz (fork maliyeti > kazanç) |
 | `PDF_MAX_AGE_HOURS` | İndirilmemiş PDF'in ömrü |
