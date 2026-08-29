@@ -32,9 +32,11 @@ Redis ── iş ilerlemesi (progress), memory fallback'i var
 | `cmr-frontend` | repo'dan build | Next.js standalone; UI + backend'e giden proxy route'lar |
 | `cmr-backend` | repo'dan build | Flask/Gunicorn; PDF üretimi |
 | `cmr-redis` | `redis:7-alpine` | Progress state (kalıcılık yok, `--save ""`) |
-| `cmr-autoheal` | `willfarrell/autoheal` | Unhealthy container'ı 30 sn'de bir restart eder |
 
 Hepsi `cmr-net` bridge ağında. Dışarıya açık tek port: Caddy'nin 80/443'ü.
+
+Docker'ın dışında, host'ta iki systemd birimi çalışır: `cmr-watchdog.timer`
+(ölü container toparlayıcı) ve `cmr-commander.service` (telefon butonu dinleyicisi).
 
 ## Dizinler
 
@@ -112,9 +114,31 @@ normal hızına (12 sn, 3 işçi) dönüyor.
    19 Ağustos'taki 17 saatlik kesinti tam buydu. Watchdog o boşluğu kapatır —
    ölçüldü: elle durdurulan backend **33 sn**'de geri geldi.
 
-Bildirim: `deploy/notify.sh` (ntfy.sh). Watchdog toparlama yaptığında ve
-haftalık özet zamanında (`cmr-report.timer`) mesaj gider. Konu adı `.env`
-içindeki `NTFY_TOPIC` — gizli tutulmalı, bilen okuyabilir.
+4. **Bellek eşiği** — watchdog aynı turda sunucu RAM'ini ve her container'ın
+   kendi `mem_limit`'ine oranını okur. %90'ı aşan varsa uyarır: hemen, +10 dk,
+   +20 dk, sonra +10 saatte son hatırlatma, sonra susar. Bellek normale dönünce
+   durum (`/var/tmp/.cmr-mem-alert`) sıfırlanır. Eşik `CMR_MEM_THRESHOLD` ile
+   ezilebilir (test için).
+
+**Bildirim** — `deploy/notify.sh` (ntfy.sh). Yalnız sorun ve toparlanma anında
+mesaj gider; her şey yolundayken sessizdir. Başlık ve buton etiketleri RFC 2047
+(base64) ile kodlanır — HTTP başlığı ham UTF-8'i güvenilir taşımaz, kodlamadan
+Türkçe karakterler "?" olur. Markdown **kullanılmaz**: ntfy'de markdown yalnız
+web arayüzünde çalışır, mobil uygulamada ham görünür.
+
+**Uzaktan müdahale** — `deploy/cmr-commander.py`, `.env` içindeki `NTFY_CMD_TOPIC`
+konusunu long-poll eder; sorun bildirimlerindeki *Yeniden başlat* / *Sunucuyu
+resetle* butonları o konuya yayın yapar. **Sunucuda hiçbir port açılmaz** ve
+Caddy'ye bağımlı değildir: Docker'ın dışında systemd servisi olduğu için
+container'ların hepsi ölüyken bile çalışır (ölçüldü: site HTTP 000 → butonla
+4 servis geri geldi). Docker daemon yanıt vermiyorsa önce onu kaldırmayı dener,
+başaramazsa "Docker bozuk" acil bildirimi gönderir — o bildirim reset butonunu
+taşır, yani çıkmaz sokak bırakmaz.
+
+Korumalar: komut konusu uyarı konusundan **ayrıdır** (uyarılar sızsa bile sunucu
+yeniden başlatılamaz) · komut `Cache: no` ile yayınlanır, ntfy'de saklanmaz ve
+sonradan tekrar oynatılamaz · 60 sn soğuma, yutulan komut için geri bildirim var ·
+tanınmayan komut yoksayılır.
 
 ## Kimlik doğrulama
 
@@ -142,12 +166,14 @@ API anahtarı yalnızca sunucuda: proxy route'ları backend'e kendi
 
 ## Yapılandırma
 
-Tümü `/opt/cmr/.env` (sunucuda) — compose bunu okur.
+Tümü `/opt/cmr/.env` (yalnız sunucuda; repo'da yoktur) — compose bunu okur.
 
 | Değişken | Anlamı |
 |---|---|
 | `CMR_DOMAIN` / `CMR_EMAIL` | Caddy TLS |
 | `API_KEY` | Backend Bearer anahtarı |
+| `NTFY_TOPIC` | Bildirim konusu — **gizli**, bilen uyarıları okur |
+| `NTFY_CMD_TOPIC` | Komut konusu — **gizli**, bilen sunucuyu yeniden başlatır |
 | `PARALLEL_WORKERS` | Turbo'da fork sayısı — 4 çekirdekte **3** optimal |
 | `PARALLEL_MIN_ROWS` | Bu satırdan azsa havuz açılmaz (fork maliyeti > kazanç) |
 | `PDF_MAX_AGE_HOURS` | İndirilmemiş PDF'in ömrü |

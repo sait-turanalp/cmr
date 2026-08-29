@@ -7,9 +7,10 @@ Dokploy'dan bağımsız, herhangi bir **Ubuntu 20.04+** sunucuda tek komutla tam
 | Dosya | Ne yapar |
 |---|---|
 | `install.sh` | Akıllı kurulum scripti |
-| `docker-compose.yml` | Self-contained compose (Caddy + frontend + backend + redis + autoheal) |
+| `docker-compose.yml` | Self-contained compose (Caddy + frontend + backend + redis) |
 | `Caddyfile` | Script çalışırken üretilir |
 | `.env` | Script çalışırken üretilir, secret'lar içinde |
+| `deploy/setup-host.sh` | Host tarafı: Docker GC/log rotation + `cmr-watchdog` ve `cmr-commander` systemd birimleri + bildirim/komut konularını üretir |
 
 ## Akıllı özellikler
 
